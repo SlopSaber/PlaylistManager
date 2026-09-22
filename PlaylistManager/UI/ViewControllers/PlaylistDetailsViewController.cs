@@ -32,24 +32,24 @@ namespace PlaylistManager.UI
         public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("modal")]
-        private readonly RectTransform modalTransform;
+        private RectTransform modalTransform { get; set; }
 
         private Vector3 modalPosition;
 
         [UIComponent("name-setting")]
-        private RectTransform nameSettingTransform;
+        private RectTransform nameSettingTransform { get; set; }
 
         [UIComponent("author-setting")]
-        private RectTransform authorSettingTransform;
+        private RectTransform authorSettingTransform { get; set; }
 
         [UIComponent("playlist-cover")]
-        private readonly ClickableImage playlistCoverView;
+        private ClickableImage playlistCoverView { get; set; }
 
         [UIComponent("text-page")]
-        private TextPageScrollView descriptionTextPage;
+        private TextPageScrollView descriptionTextPage { get; set; }
 
         [UIParams]
-        private readonly BSMLParserParams parserParams;
+        private BSMLParserParams parserParams { get; set; }
 
         public PlaylistDetailsViewController(LevelPackDetailViewController levelPackDetailViewController, ImageSelectionModalController imageSelectionModalController,
             PopupModalsController popupModalsController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)

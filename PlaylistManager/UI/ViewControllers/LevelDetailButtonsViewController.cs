@@ -33,7 +33,7 @@ namespace PlaylistManager.UI
         private bool selectedDifficultyHighlighted;
 
         [UIComponent("root")]
-        private RectTransform rootTransform;
+        private RectTransform rootTransform { get; set; }
 
         public LevelDetailButtonsViewController(StandardLevelDetailViewController standardLevelDetailViewController, LevelCollectionViewController levelCollectionViewController, LevelCollectionNavigationController levelCollectionNavigationController,
                AddPlaylistModalController addPlaylistController, PopupModalsController popupModalsController, DifficultyHighlighter difficultyHighlighter, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)

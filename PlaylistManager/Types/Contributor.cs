@@ -16,7 +16,7 @@ namespace PlaylistManager.Types
         public string iconPath { get; private set; }
 
         [UIComponent("icon")]
-        private readonly ImageView iconImage;
+        private ImageView iconImage { get; set; }
 
         public string youtube { get; private set; }
 
@@ -57,11 +57,25 @@ namespace PlaylistManager.Types
         {
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(name)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(role)));
-            BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync(iconPath).ContinueWith(x => { iconImage.sprite = x.Result; });
+            _ = LoadIconAsync();
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(YoutubeActive)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(TwitchActive)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(GithubActive)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(KofiActive)));
+        }
+
+        private async System.Threading.Tasks.Task LoadIconAsync()
+        {
+            try
+            {
+                var sprite = await BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync(iconPath);
+                if (iconImage != null)
+                    iconImage.sprite = sprite;
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log.Error(ex);
+            }
         }
 
         [UIAction("youtube-click")]

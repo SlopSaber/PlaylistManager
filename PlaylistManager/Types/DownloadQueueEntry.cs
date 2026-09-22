@@ -31,7 +31,7 @@ namespace PlaylistManager.Types
         private ImageView bgImage;
 
         [UIComponent("playlist-cover")]
-        private readonly ImageView playlistCoverView;
+        private ImageView playlistCoverView { get; set; }
 
         [UIValue("playlist-name")]
         public string PlaylistName => playlist?.Title ?? "";

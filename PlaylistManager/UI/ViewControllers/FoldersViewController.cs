@@ -59,16 +59,16 @@ namespace PlaylistManager.UI
         }
 
         [UIComponent("root")]
-        private RectTransform rootTransform;
+        private RectTransform rootTransform { get; set; }
 
         [UIComponent("back-rect")]
-        private RectTransform backTransform;
+        private RectTransform backTransform { get; set; }
 
         [UIComponent("rename-button")]
-        private Button renameButton;
+        private Button renameButton { get; set; }
 
         [UIComponent("delete-button")]
-        private Button deleteButton;
+        private Button deleteButton { get; set; }
 
         [UIComponent("folder-list")]
         public CustomListTableData customListTableData;

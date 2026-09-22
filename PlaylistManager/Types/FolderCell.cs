@@ -14,7 +14,7 @@ namespace PlaylistManager.Types
             {
                 if (text == null)
                 {
-                    text = BeatSaberMarkupLanguage.BeatSaberUI.CreateText(transform.Find("Wrapper").GetComponent<RectTransform>(), "", new Vector2(0, -5));
+                    text = BeatSaberMarkupLanguage.BeatSaberUI.CreateCurvedUIText(transform.Find("Wrapper").GetComponent<RectTransform>(), "", new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0, -5), new Vector2(60, 10));
                     text.alignment = TextAlignmentOptions.Center;
                     text.overflowMode = TextOverflowModes.Ellipsis;
                     text.fontSize = 2.5f;

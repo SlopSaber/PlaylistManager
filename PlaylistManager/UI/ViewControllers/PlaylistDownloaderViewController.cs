@@ -22,10 +22,10 @@ namespace PlaylistManager.UI
         private bool refreshRequested;
 
         [UIComponent("download-list")]
-        private readonly CustomCellListTableData customListTableData;
+        private CustomCellListTableData customListTableData { get; set; }
 
         [UIComponent("root")]
-        private readonly RectTransform rootTransform;
+        private RectTransform rootTransform { get; set; }
 
         [Inject]
         internal void Construct(PlaylistSequentialDownloader playlistDownloader, PopupModalsController popupModalsController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)

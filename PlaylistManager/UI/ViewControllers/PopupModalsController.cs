@@ -41,40 +41,40 @@ namespace PlaylistManager.UI
         private string _keyboardText = "";
 
         [UIComponent("root")]
-        private readonly RectTransform rootTransform;
+        private RectTransform rootTransform { get; set; }
 
         [UIComponent("yes-no-modal")]
-        private readonly RectTransform yesNoModalTransform;
+        private RectTransform yesNoModalTransform { get; set; }
 
         [UIComponent("yes-no-modal")]
-        private ModalView yesNoModalView;
+        private ModalView yesNoModalView { get; set; }
 
         private Vector3 yesNoModalPosition;
 
         [UIComponent("ok-modal")]
-        private readonly RectTransform okModalTransform;
+        private RectTransform okModalTransform { get; set; }
 
         [UIComponent("ok-modal")]
-        private ModalView okModalView;
+        private ModalView okModalView { get; set; }
 
         private Vector3 okModalPosition;
 
         [UIComponent("loading-modal")]
-        private readonly RectTransform loadingModalTransform;
+        private RectTransform loadingModalTransform { get; set; }
 
         [UIComponent("loading-modal")]
-        private ModalView loadingModalView;
+        private ModalView loadingModalView { get; set; }
 
         private Vector3 loadingModalPosition;
 
         [UIComponent("keyboard")]
-        private readonly RectTransform keyboardTransform;
+        private RectTransform keyboardTransform { get; set; }
 
         [UIComponent("keyboard")]
-        private ModalView keyboardModalView;
+        private ModalView keyboardModalView { get; set; }
 
         [UIParams]
-        private readonly BSMLParserParams parserParams;
+        private BSMLParserParams parserParams { get; set; }
 
         public PopupModalsController(MainMenuViewController mainMenuViewController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
         {

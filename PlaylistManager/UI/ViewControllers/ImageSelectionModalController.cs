@@ -36,15 +36,15 @@ namespace PlaylistManager.UI
         public CustomListTableData customListTableData;
 
         [UIComponent("modal")]
-        private readonly RectTransform modalTransform;
+        private RectTransform modalTransform { get; set; }
 
         [UIComponent("modal")]
-        private ModalView modalView;
+        private ModalView modalView { get; set; }
 
         private Vector3 modalPosition;
 
         [UIParams]
-        private readonly BSMLParserParams parserParams;
+        private BSMLParserParams parserParams { get; set; }
 
         public ImageSelectionModalController(LevelPackDetailViewController levelPackDetailViewController, PopupModalsController popupModalsController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
         {

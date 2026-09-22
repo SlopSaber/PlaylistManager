@@ -35,23 +35,23 @@ namespace PlaylistManager.UI
         public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("root")]
-        private readonly RectTransform rootTransform;
+        private RectTransform rootTransform { get; set; }
 
         [UIComponent("download-button")]
-        private readonly RectTransform downloadButtonTransform;
+        private RectTransform downloadButtonTransform { get; set; }
 
         private CurvedTextMeshPro downloadButtonText;
 
         private Color downloadButtonTextColor;
 
         [UIComponent("flow-button")]
-        private readonly ButtonIconImage flowButton;
+        private ButtonIconImage flowButton { get; set; }
 
         [UIComponent("queue-modal")]
-        private readonly ModalView queueModal;
+        private ModalView queueModal { get; set; }
 
         [UIComponent("queue-modal")]
-        private readonly RectTransform queueModalTransform;
+        private RectTransform queueModalTransform { get; set; }
 
         private Vector3 queueModalPosition;
 

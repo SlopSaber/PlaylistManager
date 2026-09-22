@@ -18,7 +18,7 @@ namespace PlaylistManager.UI
         private List<object> contributors;
 
         [UIComponent("contributors-list")]
-        private readonly CustomCellListTableData customListTableData;
+        private CustomCellListTableData customListTableData { get; set; }
 
         [Inject]
         public void Contruct(PopupModalsController popupModalsController)

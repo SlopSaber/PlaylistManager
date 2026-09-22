@@ -40,23 +40,23 @@ namespace PlaylistManager.UI
         public CustomListTableData dropdownTableData;
 
         [UIComponent("highlight-checkbox")]
-        private readonly RectTransform highlightCheckboxTransform;
+        private RectTransform highlightCheckboxTransform { get; set; }
 
         [UIComponent("modal")]
-        private readonly RectTransform modalTransform;
+        private RectTransform modalTransform { get; set; }
 
         private Vector3 modalPosition;
 
         [UIComponent("create-dropdown")]
-        private ModalView createModal;
+        private ModalView createModal { get; set; }
 
         [UIComponent("create-dropdown")]
-        private readonly RectTransform createModalTransform;
+        private RectTransform createModalTransform { get; set; }
 
         private Vector3 createModalPosition;
 
         [UIParams]
-        private readonly BSMLParserParams parserParams;
+        private BSMLParserParams parserParams { get; set; }
 
         public AddPlaylistModalController(StandardLevelDetailViewController standardLevelDetailViewController, PopupModalsController popupModalsController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
         {

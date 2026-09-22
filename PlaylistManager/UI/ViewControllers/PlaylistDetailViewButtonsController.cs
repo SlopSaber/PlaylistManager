@@ -43,10 +43,10 @@ namespace PlaylistManager.UI
         public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("root")]
-        private readonly Transform rootTransform;
+        private Transform rootTransform { get; set; }
 
         [UIComponent("sync-button")]
-        private readonly Transform syncButtonTransform;
+        private Transform syncButtonTransform { get; set; }
 
         internal PlaylistDetailViewButtonsController(IHttpService siraHttpService, PlaylistSequentialDownloader playlistDownloader, LevelPackDetailViewController levelPackDetailViewController,
             PopupModalsController popupModalsController, PlaylistDetailsViewController playlistDetailsViewController, AnnotatedBeatmapLevelCollectionsViewController annotatedBeatmapLevelCollectionsViewController, Loader loader, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
@@ -244,7 +244,6 @@ namespace PlaylistManager.UI
             var tokenSource = new CancellationTokenSource();
 
             popupModalsController.ShowOkModal(rootTransform, "Syncing Playlist", () => tokenSource.Cancel(), "Cancel");
-            Stream playlistStream = null;
 
             try
             {
