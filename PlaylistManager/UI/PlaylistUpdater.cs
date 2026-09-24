@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using BeatSaberPlaylistsLib.Types;
 using PlaylistManager.Interfaces;
@@ -28,12 +29,14 @@ namespace PlaylistManager.UI
 
         public void Initialize()
         {
+            var timing = Stopwatch.StartNew();
             foreach (var playlist in PlaylistLibUtils.TryGetAllPlaylists())
             {
                 playlist.PlaylistChanged += UpdatePlaylist;
             }
 
             PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested += HandleDidRequestPlaylistsRefresh;
+            Plugin.Log.Info($"Menu load trace: PlaylistManager PlaylistUpdater.Initialize={timing.ElapsedMilliseconds}ms");
         }
 
         public void Dispose()
