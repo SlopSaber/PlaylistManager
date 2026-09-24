@@ -14,6 +14,7 @@ namespace PlaylistManager.UI
         private readonly MenuButtons _menuButtons;
 
         private MenuButton refreshButton;
+        private bool skipInitialSongLoad;
 
         private RefreshButtonUI(Loader loader, ProgressBar progressBar, MenuButtons menuButtons)
         {
@@ -26,12 +27,22 @@ namespace PlaylistManager.UI
         {
             refreshButton = new MenuButton("Refresh Playlists", "Refresh Songs & Playlists", RefreshButtonPressed);
             _menuButtons.RegisterButton(refreshButton);
+            // PlaylistUpdater has already loaded playlist files while setting up the menu.
+            skipInitialSongLoad = !Loader.AreSongsLoaded;
             Loader.SongsLoadedEvent += SongsLoaded;
         }
 
         private void SongsLoaded(Loader _, System.Collections.Concurrent.ConcurrentDictionary<string, BeatmapLevel> songs)
         {
-            PlaylistLibUtils.playlistManager.RefreshPlaylists(true);
+            if (skipInitialSongLoad)
+            {
+                skipInitialSongLoad = false;
+            }
+            else
+            {
+                PlaylistLibUtils.playlistManager.RefreshPlaylists(true);
+            }
+
             var numPlaylists = PlaylistLibUtils.playlistManager.GetPlaylistCount(true);
             _progressBar.AppendText($"\n{numPlaylists} playlists loaded");
         }
