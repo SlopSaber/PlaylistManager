@@ -1,6 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Reflection;
@@ -93,12 +92,7 @@ namespace PlaylistManager.Utilities
 
         public static IPlaylist[] TryGetAllPlaylists()
         {
-            var timing = Stopwatch.StartNew();
             var playlists = playlistManager.GetAllPlaylists(true, out AggregateException ex);
-            if (timing.ElapsedMilliseconds >= 20)
-            {
-                Plugin.Log.Info($"Menu load trace: PlaylistManager GetAllPlaylists={timing.ElapsedMilliseconds}ms count={playlists.Length}");
-            }
             if (ex is not null)
             {
                 Plugin.Log.Error(ex.Message);
