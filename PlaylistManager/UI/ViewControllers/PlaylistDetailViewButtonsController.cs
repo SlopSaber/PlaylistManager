@@ -18,6 +18,7 @@ using PlaylistManager.Downloaders;
 using SiraUtil.Zenject;
 using SongCore;
 using UnityEngine;
+using UnityEngine.UI;
 using Zenject;
 
 namespace PlaylistManager.UI
@@ -70,8 +71,8 @@ namespace PlaylistManager.UI
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailViewButtons.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
             syncButtonTransform.transform.localScale *= 0.6f;
             infoButtonTransform.transform.localScale *= 0.6f;
-            ExtendIconButtonBackground(syncButtonTransform);
-            ExtendIconButtonBackground(infoButtonTransform);
+            IncreaseIconButtonHeight(syncButtonTransform);
+            IncreaseIconButtonHeight(infoButtonTransform);
             syncButtonTransform.gameObject.SetActive(false);
             rootTransform.gameObject.SetActive(false);
 
@@ -79,12 +80,16 @@ namespace PlaylistManager.UI
             playlistDownloader.QueueUpdatedEvent += OnQueueUpdated;
         }
 
-        private static void ExtendIconButtonBackground(Transform buttonTransform)
+        private static void IncreaseIconButtonHeight(Transform buttonTransform)
         {
-            var background = (RectTransform)buttonTransform.Find("BG");
-            var heightIncrease = 2f / buttonTransform.localScale.y;
-            background.sizeDelta += new Vector2(0f, heightIncrease);
-            background.anchoredPosition += new Vector2(0f, heightIncrease / 2f);
+            var buttonRect = (RectTransform)buttonTransform;
+            LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
+            var originalHeight = Mathf.Max(buttonRect.rect.height, LayoutUtility.GetPreferredHeight(buttonRect));
+            var layout = buttonTransform.GetComponent<LayoutElement>() ?? buttonTransform.gameObject.AddComponent<LayoutElement>();
+            layout.layoutPriority = 10;
+            layout.preferredHeight = originalHeight + 2f / Mathf.Abs(buttonTransform.localScale.y);
+            LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
+            Plugin.Log.Debug($"{buttonTransform.name} height: {originalHeight:0.##} -> {buttonRect.rect.height:0.##} (preferred {layout.preferredHeight:0.##})");
         }
 
         public void Dispose()
