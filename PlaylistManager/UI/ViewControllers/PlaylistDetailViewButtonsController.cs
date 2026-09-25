@@ -85,11 +85,13 @@ namespace PlaylistManager.UI
             var buttonRect = (RectTransform)buttonTransform;
             LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
             var originalHeight = Mathf.Max(buttonRect.rect.height, LayoutUtility.GetPreferredHeight(buttonRect));
-            var originalWidth = Mathf.Max(buttonRect.rect.width, LayoutUtility.GetPreferredWidth(buttonRect));
+            var preferredWidth = LayoutUtility.GetPreferredWidth(buttonRect);
+            var originalWidth = preferredWidth > 0f ? preferredWidth : buttonRect.rect.width;
             var layout = buttonTransform.GetComponent<LayoutElement>() ?? buttonTransform.gameObject.AddComponent<LayoutElement>();
             layout.layoutPriority = 10;
-            layout.preferredHeight = originalHeight + 1f / Mathf.Abs(buttonTransform.localScale.y);
+            layout.preferredHeight = originalHeight + 1.5f / Mathf.Abs(buttonTransform.localScale.y);
             layout.preferredWidth = Mathf.Max(1f, originalWidth - 1f / Mathf.Abs(buttonTransform.localScale.x));
+            Plugin.Log.Debug($"{buttonTransform.name} size: rect={buttonRect.rect.size}, preferred=({preferredWidth:0.##}, {originalHeight:0.##}), target=({layout.preferredWidth:0.##}, {layout.preferredHeight:0.##})");
         }
 
         public void Dispose()
