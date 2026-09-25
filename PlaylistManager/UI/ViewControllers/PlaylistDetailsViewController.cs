@@ -48,8 +48,7 @@ namespace PlaylistManager.UI
         [UIComponent("text-page")]
         private TextPageScrollView descriptionTextPage { get; set; }
 
-        [UIParams]
-        private BSMLParserParams parserParams { get; set; }
+        private BSMLParserParams parserParams;
 
         public PlaylistDetailsViewController(LevelPackDetailViewController levelPackDetailViewController, ImageSelectionModalController imageSelectionModalController,
             PopupModalsController popupModalsController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
@@ -81,7 +80,7 @@ namespace PlaylistManager.UI
         {
             if (!parsed)
             {
-                bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailsView.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
+                parserParams = bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailsView.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
                 modalPosition = modalTransform.position;
             }
             modalTransform.position = modalPosition;
