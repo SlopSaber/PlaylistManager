@@ -88,8 +88,6 @@ namespace PlaylistManager.UI
             var layout = buttonTransform.GetComponent<LayoutElement>() ?? buttonTransform.gameObject.AddComponent<LayoutElement>();
             layout.layoutPriority = 10;
             layout.preferredHeight = originalHeight + 2f / Mathf.Abs(buttonTransform.localScale.y);
-            LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
-            Plugin.Log.Debug($"{buttonTransform.name} height: {originalHeight:0.##} -> {buttonRect.rect.height:0.##} (preferred {layout.preferredHeight:0.##})");
         }
 
         public void Dispose()
