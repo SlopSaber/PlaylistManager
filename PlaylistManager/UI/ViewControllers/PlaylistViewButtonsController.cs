@@ -165,8 +165,8 @@ namespace PlaylistManager.UI
             downloadButtonIconColor = downloadButton.Image.color;
             downloadButtonCanvasGroup = downloadButton.GetComponent<CanvasGroup>() ?? downloadButton.gameObject.AddComponent<CanvasGroup>();
 
-            downloadButton.transform.localScale = new Vector3(0.38f, 0.38f, 1f);
-            flowButton.transform.localScale = new Vector3(0.38f, 0.38f, 1f);
+            downloadButton.transform.localScale = new Vector3(0.36f, 0.36f, 1f);
+            flowButton.transform.localScale = new Vector3(0.36f, 0.36f, 1f);
             ((ImageView)downloadButton.Image)._skew = 0.18f;
             ((ImageView)flowButton.Image)._skew = 0.18f;
         }
