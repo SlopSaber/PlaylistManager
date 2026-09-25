@@ -1,5 +1,5 @@
 ﻿<bg id='root' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:schemaLocation='https://monkeymanboy.github.io/BSML-Docs/ https://raw.githubusercontent.com/monkeymanboy/BSML-Docs/gh-pages/BSMLSchema.xsd'>
-	<primary-button text='ℹ️' italics='false' hover-hint='View Playlist Info' on-click='details-click' anchor-pos-x='-23' anchor-pos-y='0' pref-width='8' pref-height='8' min-width='8' min-height='8' />
+	<primary-button text='ℹ️' italics='false' hover-hint='View Playlist Info' on-click='details-click' anchor-pos-x='-23' anchor-pos-y='0' pref-width='6' pref-height='7' min-width='6' min-height='7' />
 	<icon-button id='sync-button' icon='PlaylistManager.Icons.Sync.png' anchor-pos-x='51' anchor-pos-y='-3' hover-hint='Sync Playlist' on-click='sync-click' interactable='~playlist-not-downloading' />
 	<vertical>
 		<button text='⏬ Download' italics='false' on-click='download-click' hover-hint='~download-hint' interactable='~download-interactable' />
