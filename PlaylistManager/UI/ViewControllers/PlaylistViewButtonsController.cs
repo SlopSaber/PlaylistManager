@@ -37,6 +37,9 @@ namespace PlaylistManager.UI
         [UIComponent("root")]
         private RectTransform rootTransform { get; set; }
 
+        [UIComponent("create-button")]
+        private RectTransform createButtonTransform { get; set; }
+
         [UIComponent("download-button")]
         private RectTransform downloadButtonTransform { get; set; }
 
@@ -79,12 +82,31 @@ namespace PlaylistManager.UI
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistViewButtons.bsml"), annotatedBeatmapLevelCollectionsViewController.gameObject, this);
             playlistDownloader.QueueUpdatedEvent += DownloadQueueUpdated;
             playlistDownloader.PopupEvent += TweenButton;
+            annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent += HidePlaylistViewButtons;
+            annotatedBeatmapLevelCollectionsViewController.didCloseBeatmapLevelCollectionsEvent += ShowPlaylistViewButtons;
+            annotatedBeatmapLevelCollectionsViewController.didDeactivateEvent += PlaylistViewDeactivated;
         }
 
         public void Dispose()
         {
             playlistDownloader.QueueUpdatedEvent -= DownloadQueueUpdated;
             playlistDownloader.PopupEvent -= TweenButton;
+            annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent -= HidePlaylistViewButtons;
+            annotatedBeatmapLevelCollectionsViewController.didCloseBeatmapLevelCollectionsEvent -= ShowPlaylistViewButtons;
+            annotatedBeatmapLevelCollectionsViewController.didDeactivateEvent -= PlaylistViewDeactivated;
+        }
+
+        private void PlaylistViewDeactivated(bool removedFromHierarchy, bool screenSystemDisabling) => ShowPlaylistViewButtons();
+
+        private void HidePlaylistViewButtons() => SetPlaylistViewButtonsVisible(false);
+
+        private void ShowPlaylistViewButtons() => SetPlaylistViewButtonsVisible(true);
+
+        private void SetPlaylistViewButtonsVisible(bool visible)
+        {
+            createButtonTransform.gameObject.SetActive(visible);
+            downloadButtonTransform.gameObject.SetActive(visible);
+            flowButton.gameObject.SetActive(visible);
         }
 
         private void DownloadQueueUpdated()
@@ -121,6 +143,7 @@ namespace PlaylistManager.UI
                 else
                 {
                     rootTransform.gameObject.SetActive(false);
+                    ShowPlaylistViewButtons();
                 }
             }
         }

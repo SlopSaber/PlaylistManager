@@ -71,8 +71,8 @@ namespace PlaylistManager.UI
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailViewButtons.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
             syncButtonTransform.transform.localScale *= 0.6f;
             infoButtonTransform.transform.localScale *= 0.6f;
-            IncreaseIconButtonHeight(syncButtonTransform);
-            IncreaseIconButtonHeight(infoButtonTransform);
+            ResizeIconButton(syncButtonTransform);
+            ResizeIconButton(infoButtonTransform);
             syncButtonTransform.gameObject.SetActive(false);
             rootTransform.gameObject.SetActive(false);
 
@@ -80,14 +80,16 @@ namespace PlaylistManager.UI
             playlistDownloader.QueueUpdatedEvent += OnQueueUpdated;
         }
 
-        private static void IncreaseIconButtonHeight(Transform buttonTransform)
+        private static void ResizeIconButton(Transform buttonTransform)
         {
             var buttonRect = (RectTransform)buttonTransform;
             LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
             var originalHeight = Mathf.Max(buttonRect.rect.height, LayoutUtility.GetPreferredHeight(buttonRect));
+            var originalWidth = Mathf.Max(buttonRect.rect.width, LayoutUtility.GetPreferredWidth(buttonRect));
             var layout = buttonTransform.GetComponent<LayoutElement>() ?? buttonTransform.gameObject.AddComponent<LayoutElement>();
             layout.layoutPriority = 10;
-            layout.preferredHeight = originalHeight + 2f / Mathf.Abs(buttonTransform.localScale.y);
+            layout.preferredHeight = originalHeight + 1f / Mathf.Abs(buttonTransform.localScale.y);
+            layout.preferredWidth = Mathf.Max(1f, originalWidth - 1f / Mathf.Abs(buttonTransform.localScale.x));
         }
 
         public void Dispose()
