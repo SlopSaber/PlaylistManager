@@ -70,11 +70,21 @@ namespace PlaylistManager.UI
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailViewButtons.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
             syncButtonTransform.transform.localScale *= 0.6f;
             infoButtonTransform.transform.localScale *= 0.6f;
+            ExtendIconButtonBackground(syncButtonTransform);
+            ExtendIconButtonBackground(infoButtonTransform);
             syncButtonTransform.gameObject.SetActive(false);
             rootTransform.gameObject.SetActive(false);
 
             levelPackDetailViewController.didActivateEvent += PackViewActivated;
             playlistDownloader.QueueUpdatedEvent += OnQueueUpdated;
+        }
+
+        private static void ExtendIconButtonBackground(Transform buttonTransform)
+        {
+            var background = (RectTransform)buttonTransform.Find("BG");
+            var heightIncrease = 2f / buttonTransform.localScale.y;
+            background.sizeDelta += new Vector2(0f, heightIncrease);
+            background.anchoredPosition += new Vector2(0f, heightIncrease / 2f);
         }
 
         public void Dispose()
