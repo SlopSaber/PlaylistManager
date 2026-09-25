@@ -5,7 +5,6 @@ using HMUI;
 using PlaylistManager.Interfaces;
 using PlaylistManager.Utilities;
 using System;
-using System.ComponentModel;
 using IPA.Loader;
 using PlaylistManager.Downloaders;
 using SiraUtil.Zenject;
@@ -15,7 +14,7 @@ using Zenject;
 
 namespace PlaylistManager.UI
 {
-    internal class PlaylistViewButtonsController : IInitializable, IDisposable, INotifyPropertyChanged, ILevelCategoryUpdater, IParentManagerUpdater
+    internal class PlaylistViewButtonsController : IInitializable, IDisposable, ILevelCategoryUpdater, IParentManagerUpdater
     {
         private readonly PopupModalsController popupModalsController;
         private readonly TweeningManager uwuTweenyManager;
@@ -32,7 +31,7 @@ namespace PlaylistManager.UI
         private readonly BSMLParser bsmlParser;
 
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
-        public event PropertyChangedEventHandler PropertyChanged;
+        private CanvasGroup downloadButtonCanvasGroup;
 
         [UIComponent("root")]
         private RectTransform rootTransform { get; set; }
@@ -83,6 +82,7 @@ namespace PlaylistManager.UI
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistViewButtons.bsml"), annotatedBeatmapLevelCollectionsViewController.gameObject, this);
             playlistDownloader.QueueUpdatedEvent += DownloadQueueUpdated;
             playlistDownloader.PopupEvent += TweenButton;
+            UpdateDownloadButtonState();
             annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent += HidePlaylistViewButtons;
             annotatedBeatmapLevelCollectionsViewController.didCloseBeatmapLevelCollectionsEvent += ShowPlaylistViewButtons;
             annotatedBeatmapLevelCollectionsViewController.didDeactivateEvent += PlaylistViewDeactivated;
@@ -103,7 +103,14 @@ namespace PlaylistManager.UI
 
         private void ShowPlaylistViewButtons() => SetPlaylistViewButtonsVisible(true);
 
-        private void DownloadQueueUpdated() => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QueueInteractable)));
+        private void DownloadQueueUpdated() => IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(UpdateDownloadButtonState);
+
+        private void UpdateDownloadButtonState()
+        {
+            var hasDownloads = PlaylistSequentialDownloader.downloadQueue.Count != 0;
+            downloadButtonCanvasGroup.alpha = hasDownloads ? 1f : 0.35f;
+            downloadButtonCanvasGroup.blocksRaycasts = hasDownloads;
+        }
 
         private void SetPlaylistViewButtonsVisible(bool visible)
         {
@@ -156,9 +163,10 @@ namespace PlaylistManager.UI
             queueModalPosition = queueModalTransform.localPosition;
 
             downloadButtonIconColor = downloadButton.Image.color;
+            downloadButtonCanvasGroup = downloadButton.GetComponent<CanvasGroup>() ?? downloadButton.gameObject.AddComponent<CanvasGroup>();
 
-            downloadButton.transform.localScale = new Vector3(0.19f, 0.19f, 1f);
-            flowButton.transform.localScale = new Vector3(0.19f, 0.19f, 1f);
+            downloadButton.transform.localScale = new Vector3(0.38f, 0.38f, 1f);
+            flowButton.transform.localScale = new Vector3(0.38f, 0.38f, 1f);
             ((ImageView)downloadButton.Image)._skew = 0.18f;
             ((ImageView)flowButton.Image)._skew = 0.18f;
         }
@@ -206,9 +214,6 @@ namespace PlaylistManager.UI
                 playlistDownloaderViewController.SetParent(queueModalTransform, new Vector3(0.75f, 0.75f, 1f));
             });
         }
-
-        [UIValue("queue-interactable")]
-        private bool QueueInteractable => PlaylistSequentialDownloader.downloadQueue.Count != 0;
 
         #endregion
 
