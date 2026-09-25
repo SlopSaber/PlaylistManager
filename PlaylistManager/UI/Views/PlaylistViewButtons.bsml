@@ -1,6 +1,6 @@
 ﻿<bg id='root' active='false' anchor-pos-x='38' xmlns:xsi='http://www.w3.org/2001/XMLSchema-instance' xsi:schemaLocation='https://monkeymanboy.github.io/BSML-Docs/ https://raw.githubusercontent.com/monkeymanboy/BSML-Docs/gh-pages/BSMLSchema.xsd'>
 	<action-button id='create-button' text='+' on-click='create-click' italics='false' anchor-pos-y='-0.5' hover-hint='Create a new playlist!' pref-height='14' pref-width='4' />
-	<icon-button id='download-button' icon='PlaylistManager.Icons.Download.png' hover-hint='Playlist Download Queue' on-click='queue-click' interactable='~queue-interactable' anchor-pos-x='54.1' anchor-pos-y='-4' pref-height='18' />
+	<icon-button id='download-button' icon='PlaylistManager.Icons.Download.png' hover-hint='Playlist Download Queue' on-click='queue-click' anchor-pos-x='53' anchor-pos-y='-3.5' pref-height='18' />
 	<icon-button id='flow-button' icon='PlaylistManager.Icons.ButtonIcon.png' hover-hint='PlaylistManager Menu' on-click='flow-click' anchor-pos-x='53' anchor-pos-y='-10' pref-height='18' />
 	<modal id='queue-modal' hide-event='close-queue' clickerino-offerino-closerino='true' size-delta-x='75' size-delta-y='56.25' move-to-center='false' anchor-pos-x='-30' anchor-pos-y='-35'>
 		<button text='x' anchor-pos-x='69.5' anchor-pos-y='-4.13' click-event='close-queue' />

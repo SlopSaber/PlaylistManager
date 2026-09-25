@@ -5,7 +5,6 @@ using HMUI;
 using PlaylistManager.Interfaces;
 using PlaylistManager.Utilities;
 using System;
-using System.ComponentModel;
 using IPA.Loader;
 using PlaylistManager.Downloaders;
 using SiraUtil.Zenject;
@@ -15,7 +14,7 @@ using Zenject;
 
 namespace PlaylistManager.UI
 {
-    internal class PlaylistViewButtonsController : IInitializable, IDisposable, INotifyPropertyChanged, ILevelCategoryUpdater, IParentManagerUpdater
+    internal class PlaylistViewButtonsController : IInitializable, IDisposable, ILevelCategoryUpdater, IParentManagerUpdater
     {
         private readonly PopupModalsController popupModalsController;
         private readonly TweeningManager uwuTweenyManager;
@@ -32,7 +31,6 @@ namespace PlaylistManager.UI
         private readonly BSMLParser bsmlParser;
 
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
-        public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("root")]
         private RectTransform rootTransform { get; set; }
@@ -81,7 +79,6 @@ namespace PlaylistManager.UI
         public void Initialize()
         {
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistViewButtons.bsml"), annotatedBeatmapLevelCollectionsViewController.gameObject, this);
-            playlistDownloader.QueueUpdatedEvent += DownloadQueueUpdated;
             playlistDownloader.PopupEvent += TweenButton;
             annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent += HidePlaylistViewButtons;
             annotatedBeatmapLevelCollectionsViewController.didCloseBeatmapLevelCollectionsEvent += ShowPlaylistViewButtons;
@@ -90,7 +87,6 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
-            playlistDownloader.QueueUpdatedEvent -= DownloadQueueUpdated;
             playlistDownloader.PopupEvent -= TweenButton;
             annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent -= HidePlaylistViewButtons;
             annotatedBeatmapLevelCollectionsViewController.didCloseBeatmapLevelCollectionsEvent -= ShowPlaylistViewButtons;
@@ -108,11 +104,6 @@ namespace PlaylistManager.UI
             createButtonTransform.gameObject.SetActive(visible);
             downloadButtonTransform.gameObject.SetActive(visible);
             flowButton.gameObject.SetActive(visible);
-        }
-
-        private void DownloadQueueUpdated()
-        {
-            PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(QueueInteractable)));
         }
 
         private void TweenButton()
@@ -198,15 +189,17 @@ namespace PlaylistManager.UI
         [UIAction("queue-click")]
         private void ShowQueue()
         {
+            if (PlaylistSequentialDownloader.downloadQueue.Count == 0)
+            {
+                return;
+            }
+
             queueModalTransform.localPosition = queueModalPosition;
             queueModal.Show(true, moveToCenter: false, finishedCallback: () =>
             {
                 playlistDownloaderViewController.SetParent(queueModalTransform, new Vector3(0.75f, 0.75f, 1f));
             });
         }
-
-        [UIValue("queue-interactable")]
-        private bool QueueInteractable => PlaylistSequentialDownloader.downloadQueue.Count != 0;
 
         #endregion
 
