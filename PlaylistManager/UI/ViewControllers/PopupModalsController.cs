@@ -73,8 +73,7 @@ namespace PlaylistManager.UI
         [UIComponent("keyboard")]
         private ModalView keyboardModalView { get; set; }
 
-        [UIParams]
-        private BSMLParserParams parserParams { get; set; }
+        private BSMLParserParams parserParams;
 
         public PopupModalsController(MainMenuViewController mainMenuViewController, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
         {
@@ -87,7 +86,7 @@ namespace PlaylistManager.UI
         {
             if (!parsed)
             {
-                bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PopupModals.bsml"), mainMenuViewController.gameObject, this);
+                parserParams = bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PopupModals.bsml"), mainMenuViewController.gameObject, this);
                 yesNoModalPosition = yesNoModalTransform.localPosition;
                 okModalPosition = okModalTransform.localPosition;
                 loadingModalPosition = loadingModalTransform.localPosition;

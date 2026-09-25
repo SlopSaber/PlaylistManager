@@ -48,6 +48,9 @@ namespace PlaylistManager.UI
         [UIComponent("sync-button")]
         private Transform syncButtonTransform { get; set; }
 
+        [UIComponent("info-button")]
+        private Transform infoButtonTransform { get; set; }
+
         internal PlaylistDetailViewButtonsController(IHttpService siraHttpService, PlaylistSequentialDownloader playlistDownloader, LevelPackDetailViewController levelPackDetailViewController,
             PopupModalsController popupModalsController, PlaylistDetailsViewController playlistDetailsViewController, AnnotatedBeatmapLevelCollectionsViewController annotatedBeatmapLevelCollectionsViewController, Loader loader, UBinder<Plugin, PluginMetadata> pluginMetadata, BSMLParser bsmlParser)
         {
@@ -66,6 +69,7 @@ namespace PlaylistManager.UI
         {
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailViewButtons.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
             syncButtonTransform.transform.localScale *= 0.6f;
+            infoButtonTransform.transform.localScale *= 0.6f;
             syncButtonTransform.gameObject.SetActive(false);
             rootTransform.gameObject.SetActive(false);
 
