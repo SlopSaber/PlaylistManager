@@ -5,7 +5,7 @@
     <BSMTProjectType>BSIPA</BSMTProjectType>
     <GameDirectory>D:\BSManager\BSInstances\1.45.1</GameDirectory>
     <CopyPDB>false</CopyPDB>
-    <DisableCopyToGame>false</DisableCopyToGame>
+    <DisableCopyToGame>True</DisableCopyToGame>
         <TargetFramework>net48</TargetFramework>
         <OutputType>Library</OutputType>
         <LangVersion>9</LangVersion>
@@ -177,4 +177,9 @@
           <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
         </PackageReference>
     </ItemGroup>
+
+    <Target Name="StagePlaylistManagerToPending" AfterTargets="Build" Condition="'$(ContinuousIntegrationBuild)' != 'True' And Exists('$(GameDirectory)')">
+        <MakeDir Directories="$(GameDirectory)\IPA\Pending\Plugins" />
+        <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(GameDirectory)\IPA\Pending\Plugins\$(TargetFileName)" />
+    </Target>
 </Project>
