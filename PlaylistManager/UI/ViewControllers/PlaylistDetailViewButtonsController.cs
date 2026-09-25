@@ -69,10 +69,10 @@ namespace PlaylistManager.UI
         public void Initialize()
         {
             bsmlParser.Parse(BeatSaberMarkupLanguage.Utilities.GetResourceContent(pluginMetadata.Assembly, "PlaylistManager.UI.Views.PlaylistDetailViewButtons.bsml"), levelPackDetailViewController._detailWrapper.gameObject, this);
-            syncButtonTransform.transform.localScale *= 0.6f;
-            infoButtonTransform.transform.localScale *= 0.6f;
-            ResizeIconButton(syncButtonTransform);
-            ResizeIconButton(infoButtonTransform);
+            syncButtonTransform.transform.localScale *= 0.55f;
+            infoButtonTransform.transform.localScale *= 0.55f;
+            SetIconButtonHeight(syncButtonTransform);
+            SetIconButtonHeight(infoButtonTransform);
             syncButtonTransform.gameObject.SetActive(false);
             rootTransform.gameObject.SetActive(false);
 
@@ -80,18 +80,14 @@ namespace PlaylistManager.UI
             playlistDownloader.QueueUpdatedEvent += OnQueueUpdated;
         }
 
-        private static void ResizeIconButton(Transform buttonTransform)
+        private static void SetIconButtonHeight(Transform buttonTransform)
         {
             var buttonRect = (RectTransform)buttonTransform;
             LayoutRebuilder.ForceRebuildLayoutImmediate(buttonRect);
             var originalHeight = Mathf.Max(buttonRect.rect.height, LayoutUtility.GetPreferredHeight(buttonRect));
-            var preferredWidth = LayoutUtility.GetPreferredWidth(buttonRect);
-            var originalWidth = preferredWidth > 0f ? preferredWidth : buttonRect.rect.width;
             var layout = buttonTransform.GetComponent<LayoutElement>() ?? buttonTransform.gameObject.AddComponent<LayoutElement>();
             layout.layoutPriority = 10;
-            layout.preferredHeight = originalHeight + 1.5f / Mathf.Abs(buttonTransform.localScale.y);
-            layout.preferredWidth = Mathf.Max(1f, originalWidth - 1f / Mathf.Abs(buttonTransform.localScale.x));
-            Plugin.Log.Debug($"{buttonTransform.name} size: rect={buttonRect.rect.size}, preferred=({preferredWidth:0.##}, {originalHeight:0.##}), target=({layout.preferredWidth:0.##}, {layout.preferredHeight:0.##})");
+            layout.preferredHeight = originalHeight + 2f / Mathf.Abs(buttonTransform.localScale.y);
         }
 
         public void Dispose()
