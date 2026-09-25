@@ -112,6 +112,11 @@ namespace PlaylistManager.UI
             UpdateReadOnly();
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistAllowDuplicates)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistDescription)));
+            if (!selectedPlaylist.SpriteWasLoaded)
+            {
+                selectedPlaylist.SpriteLoaded -= SelectedPlaylist_SpriteLoaded;
+                selectedPlaylist.SpriteLoaded += SelectedPlaylist_SpriteLoaded;
+            }
             playlistCoverView.sprite = selectedPlaylist.Sprite;
             descriptionTextPage.ScrollTo(0, true);
         }
@@ -335,6 +340,11 @@ namespace PlaylistManager.UI
 
         private void SelectedPlaylist_SpriteLoaded(object sender, EventArgs e)
         {
+            if (selectedPlaylist == null || !selectedPlaylist.SpriteWasLoaded)
+            {
+                return;
+            }
+
             playlistCoverView.sprite = selectedPlaylist.Sprite;
             selectedPlaylist.SpriteLoaded -= SelectedPlaylist_SpriteLoaded;
         }

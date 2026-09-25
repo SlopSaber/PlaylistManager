@@ -5,6 +5,20 @@ using UnityEngine;
 
 namespace PlaylistManager.HarmonyPatches
 {
+    [HarmonyPatch(typeof(LevelPackDetailViewController), nameof(LevelPackDetailViewController.SetData))]
+    internal class LevelPackDetailViewController_SetData
+    {
+        private static void Prefix(ref BeatmapLevelPack pack)
+        {
+            if (pack is PlaylistLevelPack playlistPack &&
+                playlistPack.playlist.SpriteWasLoaded &&
+                pack.coverImage != playlistPack.playlist.Sprite)
+            {
+                pack = playlistPack.playlist.PlaylistLevelPack;
+            }
+        }
+    }
+
     [HarmonyPatch(typeof(LevelPackDetailViewController), nameof(LevelPackDetailViewController.ShowContent))]
     internal class LevelPackDetailViewController_ShowContent
     {
