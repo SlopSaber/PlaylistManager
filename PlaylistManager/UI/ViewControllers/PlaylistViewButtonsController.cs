@@ -43,9 +43,10 @@ namespace PlaylistManager.UI
         [UIComponent("download-button")]
         private RectTransform downloadButtonTransform { get; set; }
 
-        private CurvedTextMeshPro downloadButtonText;
+        [UIComponent("download-button")]
+        private ButtonIconImage downloadButton { get; set; }
 
-        private Color downloadButtonTextColor;
+        private Color downloadButtonIconColor;
 
         [UIComponent("flow-button")]
         private ButtonIconImage flowButton { get; set; }
@@ -116,19 +117,21 @@ namespace PlaylistManager.UI
 
         private void TweenButton()
         {
-            uwuTweenyManager.KillAllTweens(downloadButtonText);
+            uwuTweenyManager.KillAllTweens(downloadButton.Image);
             if (playlistDownloader.PendingPopup != null)
             {
                 var tween = new FloatTween(0.35f, 0.6f, val =>
                 {
-                    downloadButtonText.color = new Color(val, val, val);
+                    var color = downloadButton.Image.color;
+                    downloadButton.Image.color = new Color(val, val, val, color.a);
                 }, 0.75f, EaseType.InOutBack);
-                uwuTweenyManager.AddTween(tween, downloadButtonText);
+                uwuTweenyManager.AddTween(tween, downloadButton.Image);
                 tween.onCompleted = delegate () { TweenButton(); };
             }
             else
             {
-                downloadButtonText.color = downloadButtonTextColor;
+                var color = downloadButton.Image.color;
+                downloadButton.Image.color = new Color(downloadButtonIconColor.r, downloadButtonIconColor.g, downloadButtonIconColor.b, color.a);
             }
         }
 
@@ -155,12 +158,12 @@ namespace PlaylistManager.UI
         {
             queueModalPosition = queueModalTransform.localPosition;
 
-            downloadButtonText = downloadButtonTransform.GetComponentInChildren<CurvedTextMeshPro>();
-            downloadButtonTextColor = downloadButtonText.color;
+            downloadButtonIconColor = downloadButton.Image.color;
 
-            flowButton.transform.localScale = new Vector3(0.42f, 0.42f, 1f);
-            var icon = flowButton.Image as ImageView;
-            icon._skew = 0.18f;
+            downloadButton.transform.localScale = new Vector3(0.23f, 0.23f, 1f);
+            flowButton.transform.localScale = new Vector3(0.23f, 0.23f, 1f);
+            ((ImageView)downloadButton.Image)._skew = 0.18f;
+            ((ImageView)flowButton.Image)._skew = 0.18f;
         }
 
         #region Create Playlist
