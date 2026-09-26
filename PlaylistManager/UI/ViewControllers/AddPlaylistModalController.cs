@@ -138,7 +138,7 @@ namespace PlaylistManager.UI
         {
             if (sender is IStagedSpriteLoad stagedSpriteLoadPlaylist)
             {
-                if (parentManager.GetAllPlaylists(false).Contains((IPlaylist)stagedSpriteLoadPlaylist))
+                if (childPlaylists != null && childPlaylists.Contains((IPlaylist)stagedSpriteLoadPlaylist))
                 {
                     ShowPlaylist((IPlaylist)stagedSpriteLoadPlaylist);
                 }
@@ -149,8 +149,9 @@ namespace PlaylistManager.UI
 
         private void ShowPlaylist(IPlaylist playlist)
         {
-            var subName = string.Format("{0} songs", playlist.BeatmapLevels.Length);
-            if (playlist.BeatmapLevels.Any(level => level.levelID == standardLevelDetailViewController.beatmapKey.levelId))
+            var beatmapLevels = playlist.BeatmapLevels;
+            var subName = string.Format("{0} songs", beatmapLevels.Length);
+            if (beatmapLevels.Any(level => level.levelID == standardLevelDetailViewController.beatmapKey.levelId))
             {
                 if (!playlist.AllowDuplicates)
                 {

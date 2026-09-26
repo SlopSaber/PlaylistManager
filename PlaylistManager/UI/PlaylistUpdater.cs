@@ -18,6 +18,8 @@ namespace PlaylistManager.UI
         private readonly LevelPackDetailViewController _levelPackDetailViewController;
 
         private IPlaylist _selectedPlaylist;
+        private Sprite _ownedBlurredSprite;
+        private Texture2D _ownedBlurredTexture;
 
         private PlaylistUpdater(AnnotatedBeatmapLevelCollectionsViewController annotatedBeatmapLevelCollectionsViewController, LevelCollectionNavigationController levelCollectionNavigationController, LevelPackDetailViewController levelPackDetailViewController)
         {
@@ -49,6 +51,20 @@ namespace PlaylistManager.UI
             }
 
             PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested -= HandleDidRequestPlaylistsRefresh;
+            ReleaseOwnedBlurredArtwork();
+        }
+
+        private void ReleaseOwnedBlurredArtwork()
+        {
+            if (ReferenceEquals(_levelPackDetailViewController._blurredPackArtwork, _ownedBlurredSprite) && !ReferenceEquals(_ownedBlurredSprite, null))
+                _levelPackDetailViewController._blurredPackArtwork = null;
+
+            if (_ownedBlurredSprite)
+                UnityEngine.Object.Destroy(_ownedBlurredSprite);
+            if (_ownedBlurredTexture)
+                UnityEngine.Object.Destroy(_ownedBlurredTexture);
+            _ownedBlurredSprite = null;
+            _ownedBlurredTexture = null;
         }
 
         private void HandleDidRequestPlaylistsRefresh(object sender, string e)
@@ -137,6 +153,7 @@ namespace PlaylistManager.UI
 
         private void SelectedPlaylist_SpriteLoaded(object sender, EventArgs e)
         {
+            ReleaseOwnedBlurredArtwork();
             if (_levelPackDetailViewController._blurredPackArtwork != null)
             {
                 UnityEngine.Object.Destroy(_levelPackDetailViewController._blurredPackArtwork);
@@ -146,7 +163,9 @@ namespace PlaylistManager.UI
             var coverImage = sender is IPlaylist playlist ? playlist.Sprite : sender as Sprite;
             var sprite = coverImage != null ? coverImage : _levelPackDetailViewController._defaultCoverSprite;
             var texture = _levelPackDetailViewController._kawaseBlurRenderer.Blur(sprite.texture, KawaseBlurRendererSO.KernelSize.Kernel7, 2);
-            _levelPackDetailViewController._blurredPackArtwork = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 256f, 0U, SpriteMeshType.FullRect, new Vector4(0f, 0f, 0f, 0f), false);
+            _ownedBlurredTexture = texture;
+            _ownedBlurredSprite = Sprite.Create(texture, new Rect(0f, 0f, texture.width, texture.height), new Vector2(0.5f, 0.5f), 256f, 0U, SpriteMeshType.FullRect, new Vector4(0f, 0f, 0f, 0f), false);
+            _levelPackDetailViewController._blurredPackArtwork = _ownedBlurredSprite;
             _levelPackDetailViewController._packImage.sprite = sprite;
             _levelPackDetailViewController.ShowContent(LevelPackDetailViewController.ContentType.NonBuyable);
         }

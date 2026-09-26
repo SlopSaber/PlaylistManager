@@ -91,6 +91,7 @@ namespace PlaylistManager.Downloaders
             }
 
             PlaylistDownloader.PlaylistQueuedEvent -= OnPlaylistQueued;
+            Loader.SongsLoadedEvent -= OnSongsLoaded;
         }
 
         public void QueuePlaylist(DownloadQueueEntry downloadQueueEntry)
@@ -133,6 +134,7 @@ namespace PlaylistManager.Downloaders
         {
             if (downloadQueue.Count == 0)
             {
+                Loader.SongsLoadedEvent -= OnSongsLoaded;
                 Loader.SongsLoadedEvent += OnSongsLoaded;
                 Loader.Instance.RefreshSongs(false);
                 ownedHashes.Clear();

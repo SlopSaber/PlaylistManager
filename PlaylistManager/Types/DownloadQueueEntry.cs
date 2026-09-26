@@ -14,6 +14,7 @@ namespace PlaylistManager.Types
     /// </summary>
     public class DownloadQueueEntry : INotifyPropertyChanged, IProgress<double>, IProgress<float>
     {
+        private static readonly Lazy<Sprite> ProgressSprite = new(() => Sprite.Create(new Texture2D(1, 1), new Rect(0, 0, 1, 1), Vector2.one / 2f));
         /// <summary>
         /// Playlist to download
         /// </summary>
@@ -104,7 +105,7 @@ namespace PlaylistManager.Types
 
             bgImage = playlistCoverView.transform.parent.gameObject.AddComponent<ImageView>();
             bgImage.enabled = true;
-            bgImage.sprite = Sprite.Create((new Texture2D(1, 1)), new Rect(0, 0, 1, 1), Vector2.one / 2f);
+            bgImage.sprite = ProgressSprite.Value;
             bgImage.type = Image.Type.Filled;
             bgImage.fillMethod = Image.FillMethod.Horizontal;
             bgImage.fillAmount = 0;

@@ -178,7 +178,7 @@
         </PackageReference>
     </ItemGroup>
 
-    <Target Name="StagePlaylistManagerToPending" AfterTargets="Build" Condition="'$(ContinuousIntegrationBuild)' != 'True' And Exists('$(GameDirectory)')">
+    <Target Name="StagePlaylistManagerToPending" AfterTargets="Build" Condition="'$(ContinuousIntegrationBuild)' != 'True' And '$(DisableCopyToGame)' != 'True' And Exists('$(GameDirectory)')">
         <MakeDir Directories="$(GameDirectory)\IPA\Pending\Plugins" />
         <Copy SourceFiles="$(TargetPath)" DestinationFiles="$(GameDirectory)\IPA\Pending\Plugins\$(TargetFileName)" />
     </Target>

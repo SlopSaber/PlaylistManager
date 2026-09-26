@@ -57,7 +57,11 @@ namespace PlaylistManager.UI
             try
             {
                 Directory.CreateDirectory(IMAGES_PATH);
-                File.Create(Path.Combine(IMAGES_PATH, ".plignore"));
+                var ignorePath = Path.Combine(IMAGES_PATH, ".plignore");
+                if (!File.Exists(ignorePath))
+                {
+                    using (File.Create(ignorePath)) { }
+                }
             }
             catch (Exception e)
             {
