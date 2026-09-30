@@ -48,6 +48,7 @@ namespace PlaylistManager.UI
         private List<BeatSaberPlaylistsLib.PlaylistManager> currentManagers;
         private FolderMode folderMode;
         private bool disposed;
+        private bool renaming;
 
         public BeatSaberPlaylistsLib.PlaylistManager CurrentParentManager
         {
@@ -343,7 +344,8 @@ namespace PlaylistManager.UI
         private async void RenameKeyboardEnter(string folderName)
         {
             var manager = CurrentParentManager;
-            if (manager?.Parent == null)
+            var catalog = PlaylistLibUtils.Catalog;
+            if (disposed || renaming || manager?.Parent == null || catalog == null)
             {
                 return;
             }
@@ -355,13 +357,18 @@ namespace PlaylistManager.UI
                 {
                     try
                     {
-                        await PlaylistLibUtils.WaitForPendingSavesAsync(manager, true);
-                        if (disposed || !ReferenceEquals(CurrentParentManager, manager)) return;
-                        manager.RenameManager(folderName);
+                        renaming = true;
+                        await PlaylistLibUtils.RenameManagerAsync(manager, folderName);
+                        if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                        await catalog.ScanAsync();
+                        await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                        if (disposed || !ReferenceEquals(CurrentParentManager, manager)
+                            || !rootTransform || !rootTransform.gameObject.activeInHierarchy) return;
                         PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FolderText)));
-                        await PlaylistLibUtils.Catalog.ScanAsync();
                     }
+                    catch (OperationCanceledException) { }
                     catch (Exception e) { Plugin.Log.Error(e); }
+                    finally { renaming = false; }
                 }
             }
         }
