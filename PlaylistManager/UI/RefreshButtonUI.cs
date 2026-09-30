@@ -36,14 +36,15 @@ namespace PlaylistManager.UI
         {
             try
             {
-                var manager = await PlaylistLibUtils.GetDefaultManagerAsync();
+                await PlaylistLibUtils.GetDefaultManagerAsync();
                 if (disposed) return;
-                if (skipInitialSongLoad) skipInitialSongLoad = false;
-                else manager.RefreshPlaylists(true);
-                await PlaylistLibUtils.Catalog.ScanAsync();
+                var catalog = PlaylistLibUtils.Catalog;
+                bool reload = !skipInitialSongLoad;
+                skipInitialSongLoad = false;
+                await catalog.ScanAsync(reload);
                 await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
-                if (disposed) return;
-                var numPlaylists = manager.GetPlaylistCount(true);
+                if (disposed || !ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                var numPlaylists = catalog.GetPlaylists().Length;
                 _progressBar.AppendText($"\n{numPlaylists} playlists loaded");
             }
             catch (OperationCanceledException) { }

@@ -289,8 +289,17 @@ namespace PlaylistManager.UI
                     using var stream = await httpResponse.ReadAsStreamAsync();
                     await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
                     if (disposed || tokenSource.IsCancellationRequested || !ReferenceEquals(selectedPlaylist, playlist)) return;
-                    playlist.Clear(); // Clear all songs
-                    PlaylistLibUtils.playlistManager.DefaultHandler.Populate(stream, playlist);
+                    bool published = await manager.PopulatePlaylistAsync(playlist, stream, PlaylistLibUtils.playlistManager.DefaultHandler, tokenSource.Token);
+                    await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                    if (!published)
+                    {
+                        if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                        {
+                            popupModalsController.OkText = "Playlist changed while syncing. Please try again.";
+                            popupModalsController.OkButtonText = "Ok";
+                        }
+                        return;
+                    }
                     if (!playlist.TryGetCustomData("syncURL", out outSyncURL)) playlist.SetCustomData("syncURL", syncURL);
                     playlist.RaisePlaylistChanged();
                     await PlaylistLibUtils.StorePlaylistAsync(playlist, manager);

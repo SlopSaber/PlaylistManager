@@ -17,6 +17,7 @@ namespace PlaylistManager.Managers
         private BeatSaberPlaylistsLib.PlaylistManager.ScanResult current;
         private Task scanTask = Task.CompletedTask;
         private bool requested;
+        private bool reloadRequested;
         private bool scanning;
         private bool disposed;
 
@@ -62,10 +63,11 @@ namespace PlaylistManager.Managers
             return manager ?? Manager;
         }
 
-        internal Task ScanAsync()
+        internal Task ScanAsync(bool reload = false)
         {
             if (disposed) return Task.CompletedTask;
             requested = true;
+            reloadRequested |= reload;
             if (Manager == null) return Ready;
             if (!scanning) scanTask = RunScansAsync();
             return scanTask;
@@ -79,7 +81,11 @@ namespace PlaylistManager.Managers
                 while (requested && !disposed)
                 {
                     requested = false;
-                    var result = await Manager.GetAllPlaylistsAsync(true, lifetime.Token);
+                    bool reload = reloadRequested;
+                    reloadRequested = false;
+                    var result = reload
+                        ? await Manager.RefreshPlaylistsAsync(true, lifetime.Token)
+                        : await Manager.GetAllPlaylistsAsync(true, lifetime.Token);
                     await UnityGame.SwitchToMainThreadAsync();
                     if (disposed) return;
                     if (result.Exception != null)
