@@ -20,6 +20,8 @@ namespace PlaylistManager.UI
         private IPlaylist _selectedPlaylist;
         private Sprite _ownedBlurredSprite;
         private Texture2D _ownedBlurredTexture;
+        private bool disposed;
+        private readonly HashSet<IPlaylist> changedSubscriptions = new();
 
         private PlaylistUpdater(AnnotatedBeatmapLevelCollectionsViewController annotatedBeatmapLevelCollectionsViewController, LevelCollectionNavigationController levelCollectionNavigationController, LevelPackDetailViewController levelPackDetailViewController)
         {
@@ -30,27 +32,25 @@ namespace PlaylistManager.UI
 
         public void Initialize()
         {
-            foreach (var playlist in PlaylistLibUtils.TryGetAllPlaylists())
-            {
-                playlist.PlaylistChanged += UpdatePlaylist;
-            }
-
-            PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested += HandleDidRequestPlaylistsRefresh;
+            PlaylistLibUtils.Catalog.Changed += HandleCatalogChanged;
+            RefreshPlaylistChangedListeners();
         }
 
         public void Dispose()
         {
+            disposed = true;
             foreach (var playlist in playlistReferences)
             {
                 playlist.SpriteLoaded -= SelectedPlaylist_SpriteLoaded;
             }
 
-            foreach (var playlist in PlaylistLibUtils.TryGetAllPlaylists())
+            foreach (var playlist in changedSubscriptions)
             {
                 playlist.PlaylistChanged -= UpdatePlaylist;
             }
 
-            PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested -= HandleDidRequestPlaylistsRefresh;
+            changedSubscriptions.Clear();
+            if (PlaylistLibUtils.Catalog != null) PlaylistLibUtils.Catalog.Changed -= HandleCatalogChanged;
             ReleaseOwnedBlurredArtwork();
         }
 
@@ -67,15 +67,17 @@ namespace PlaylistManager.UI
             _ownedBlurredTexture = null;
         }
 
-        private void HandleDidRequestPlaylistsRefresh(object sender, string e)
+        private void HandleCatalogChanged()
         {
+            if (disposed) return;
             RefreshPlaylistChangedListeners();
         }
 
         public void RefreshPlaylistChangedListeners(BeatmapLevelPack[] beatmapLevelPacks = null)
         {
-            foreach (var playlist in beatmapLevelPacks?.Select(p => ((PlaylistLevelPack)p).playlist) ?? PlaylistLibUtils.TryGetAllPlaylists())
+            foreach (var playlist in beatmapLevelPacks?.Select(p => ((PlaylistLevelPack)p).playlist) ?? PlaylistLibUtils.GetCachedPlaylists())
             {
+                changedSubscriptions.Add(playlist);
                 playlist.PlaylistChanged -= UpdatePlaylist;
                 playlist.PlaylistChanged += UpdatePlaylist;
             }
@@ -88,6 +90,7 @@ namespace PlaylistManager.UI
 
         private void UpdatePlaylist(IPlaylist playlist)
         {
+            if (disposed) return;
             var playlistLevelPack = RefreshAnnotatedBeatmapCollection(playlist.PlaylistLevelPack);
 
             if (playlistLevelPack == null)
@@ -153,6 +156,7 @@ namespace PlaylistManager.UI
 
         private void SelectedPlaylist_SpriteLoaded(object sender, EventArgs e)
         {
+            if (disposed) return;
             ReleaseOwnedBlurredArtwork();
             if (_levelPackDetailViewController._blurredPackArtwork != null)
             {

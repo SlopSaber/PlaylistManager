@@ -15,6 +15,7 @@ namespace PlaylistManager.UI
 
         private MenuButton refreshButton;
         private bool skipInitialSongLoad;
+        private bool disposed;
 
         private RefreshButtonUI(Loader loader, ProgressBar progressBar, MenuButtons menuButtons)
         {
@@ -27,28 +28,31 @@ namespace PlaylistManager.UI
         {
             refreshButton = new MenuButton("Refresh Playlists", "Refresh Songs & Playlists", RefreshButtonPressed);
             _menuButtons.RegisterButton(refreshButton);
-            // PlaylistUpdater has already loaded playlist files while setting up the menu.
             skipInitialSongLoad = !Loader.AreSongsLoaded;
             Loader.SongsLoadedEvent += SongsLoaded;
         }
 
-        private void SongsLoaded(Loader _, System.Collections.Concurrent.ConcurrentDictionary<string, BeatmapLevel> songs)
+        private async void SongsLoaded(Loader _, System.Collections.Concurrent.ConcurrentDictionary<string, BeatmapLevel> songs)
         {
-            if (skipInitialSongLoad)
+            try
             {
-                skipInitialSongLoad = false;
+                var manager = await PlaylistLibUtils.GetDefaultManagerAsync();
+                if (disposed) return;
+                if (skipInitialSongLoad) skipInitialSongLoad = false;
+                else manager.RefreshPlaylists(true);
+                await PlaylistLibUtils.Catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed) return;
+                var numPlaylists = manager.GetPlaylistCount(true);
+                _progressBar.AppendText($"\n{numPlaylists} playlists loaded");
             }
-            else
-            {
-                PlaylistLibUtils.playlistManager.RefreshPlaylists(true);
-            }
-
-            var numPlaylists = PlaylistLibUtils.playlistManager.GetPlaylistCount(true);
-            _progressBar.AppendText($"\n{numPlaylists} playlists loaded");
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         public void Dispose()
         {
+            disposed = true;
             _menuButtons.UnregisterButton(refreshButton);
             Loader.SongsLoadedEvent -= SongsLoaded;
         }

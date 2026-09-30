@@ -100,7 +100,7 @@ namespace PlaylistManager
             {
                 Events.RaisePlaylistSelected(playlistLevelPack.playlist, parentManager);
                 selectedPlaylist = playlistLevelPack.playlist;
-                parentManager = PlaylistLibUtils.playlistManager.GetManagerForPlaylist(playlistLevelPack.playlist);
+                parentManager = PlaylistLibUtils.Catalog?.Manager?.GetManagerForPlaylist(playlistLevelPack.playlist);
             }
             else
             {

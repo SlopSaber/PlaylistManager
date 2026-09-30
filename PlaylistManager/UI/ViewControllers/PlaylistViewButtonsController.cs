@@ -32,6 +32,7 @@ namespace PlaylistManager.UI
 
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         private CanvasGroup downloadButtonCanvasGroup;
+        private bool disposed;
 
         [UIComponent("root")]
         private RectTransform rootTransform { get; set; }
@@ -90,6 +91,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             playlistDownloader.QueueUpdatedEvent -= DownloadQueueUpdated;
             playlistDownloader.PopupEvent -= TweenButton;
             annotatedBeatmapLevelCollectionsViewController.didOpenBeatmapLevelCollectionsEvent -= HidePlaylistViewButtons;
@@ -179,21 +181,32 @@ namespace PlaylistManager.UI
             popupModalsController.ShowKeyboard(rootTransform, CreatePlaylist);
         }
 
-        private void CreatePlaylist(string playlistName)
+        private async void CreatePlaylist(string playlistName)
         {
             if (string.IsNullOrWhiteSpace(playlistName))
             {
                 return;
             }
 
-            var playlist = PlaylistLibUtils.CreatePlaylistWithConfig(playlistName, parentManager ?? BeatSaberPlaylistsLib.PlaylistManager.DefaultManager);
-            popupModalsController.ShowYesNoModal(rootTransform, $"Successfully created {playlist.Title}", () =>
+            var manager = parentManager;
+            try
             {
-                // In case the category isn't already playlists which it shouldn't be
-                levelCategorySegmentedControl.SelectCellWithNumber(1);
-                selectLevelCategoryViewController.LevelFilterCategoryIconSegmentedControlDidSelectCell(levelCategorySegmentedControl, 1);
-                levelFilteringNavigationController.SelectAnnotatedBeatmapLevelCollection(playlist.PlaylistLevelPack);
-            }, "Go to playlist", "Dismiss");
+                manager ??= await PlaylistLibUtils.GetDefaultManagerAsync();
+                if (disposed) return;
+                var playlist = PlaylistLibUtils.CreatePlaylistWithConfig(playlistName, manager);
+                await PlaylistLibUtils.Catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed) return;
+                popupModalsController.ShowYesNoModal(rootTransform, $"Successfully created {playlist.Title}", () =>
+                {
+                    if (disposed) return;
+                    levelCategorySegmentedControl.SelectCellWithNumber(1);
+                    selectLevelCategoryViewController.LevelFilterCategoryIconSegmentedControlDidSelectCell(levelCategorySegmentedControl, 1);
+                    levelFilteringNavigationController.SelectAnnotatedBeatmapLevelCollection(playlist.PlaylistLevelPack);
+                }, "Go to playlist", "Dismiss");
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         #endregion

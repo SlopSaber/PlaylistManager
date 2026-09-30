@@ -19,6 +19,28 @@ namespace PlaylistManager.Utilities
         private const string ICON_PATH = "PlaylistManager.Icons.DefaultIcon.png";
         private const string EASTER_EGG_URL = "https://raw.githubusercontent.com/rithik-b/PlaylistManager/master/img/easteregg.bplist";
         private static readonly HashSet<BeatSaberPlaylistsLib.PlaylistManager> savingManagers = new();
+        internal static global::PlaylistManager.Managers.PlaylistCatalog Catalog { get; set; }
+
+        internal static async Task<BeatSaberPlaylistsLib.PlaylistManager> GetDefaultManagerAsync()
+        {
+            var catalog = Catalog ?? throw new InvalidOperationException("Playlist catalog is unavailable.");
+            await catalog.Ready;
+            await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+            if (!ReferenceEquals(Catalog, catalog)) throw new OperationCanceledException();
+            if (!catalog.IsReady) throw new InvalidOperationException("Playlist catalog initialization failed.");
+            return catalog.Manager ?? throw new InvalidOperationException("Playlist manager initialization failed.");
+        }
+
+        internal static IPlaylist[] GetCachedPlaylists(BeatSaberPlaylistsLib.PlaylistManager manager = null) =>
+            Catalog?.GetPlaylists(manager) ?? Array.Empty<IPlaylist>();
+
+        internal static BeatmapLevelPack[] GetCachedPlaylistLevelPacks()
+        {
+            var playlists = GetCachedPlaylists();
+            var packs = new BeatmapLevelPack[playlists.Length];
+            for (int i = 0; i < packs.Length; ++i) packs[i] = playlists[i].PlaylistLevelPack;
+            return packs;
+        }
 
         internal static Task StorePlaylistAsync(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
         {

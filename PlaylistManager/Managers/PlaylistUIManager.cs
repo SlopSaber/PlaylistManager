@@ -23,6 +23,7 @@ namespace PlaylistManager.Managers
         private int downloadingBeatmapCollectionIdx;
         private BeatmapLevelPack[] downloadingBeatmapLevelCollections;
         private BeatmapLevel downloadingBeatmap;
+        private bool disposed;
 
         private readonly List<ILevelCategoryUpdater> levelCategoryUpdaters;
         private readonly IPMRefreshable refreshable;
@@ -54,7 +55,8 @@ namespace PlaylistManager.Managers
             playlistDownloader.QueueUpdatedEvent += PlaylistDownloader_QueueUpdatedEvent;
 
             // Whenever a refresh is requested
-            PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested += PlaylistManager_PlaylistsRefreshRequested;
+            PlaylistLibUtils.Catalog.Changed += CatalogChanged;
+            if (PlaylistLibUtils.Catalog.IsReady) CatalogChanged();
 
             // For assigning playlist author
             settingsViewController.NameFetchRequestedEvent += AssignAuthor;
@@ -63,6 +65,7 @@ namespace PlaylistManager.Managers
 
         public void Dispose()
         {
+            disposed = true;
             selectLevelCategoryViewController.didSelectLevelCategoryEvent -= SelectLevelCategoryViewController_didSelectLevelCategoryEvent;
             selectLevelCategoryViewController.didActivateEvent -= SelectLevelCategoryViewController_didActivateEvent;
             selectLevelCategoryViewController.didDeactivateEvent -= SelectLevelCategoryViewController_didDeactivateEvent;
@@ -71,7 +74,7 @@ namespace PlaylistManager.Managers
             SongCore_RefreshLevelPacks.PacksToBeRefreshedEvent -= OnPacksToBeRefreshed;
             LevelFilteringNavigationController_UpdateSecondChildControllerContent.SecondChildControllerUpdatedEvent -= LevelFilteringNavigationController_SecondChildControllerUpdatedEvent;
 
-            PlaylistLibUtils.playlistManager.PlaylistsRefreshRequested -= PlaylistManager_PlaylistsRefreshRequested;
+            if (PlaylistLibUtils.Catalog != null) PlaylistLibUtils.Catalog.Changed -= CatalogChanged;
 
             settingsViewController.NameFetchRequestedEvent -= AssignAuthor;
         }
@@ -137,10 +140,10 @@ namespace PlaylistManager.Managers
             }
         }
 
-        private void PlaylistManager_PlaylistsRefreshRequested(object sender, string requester)
+        private void CatalogChanged()
         {
-            Plugin.Log.Info("Playlist Refresh requested by: " + requester);
-            refreshable.Refresh();
+            if (!disposed && selectLevelCategoryViewController.selectedLevelCategory == SelectLevelCategoryViewController.LevelCategory.CustomSongs
+                && annotatedBeatmapLevelCollectionsViewController.isActiveAndEnabled) refreshable.Refresh();
         }
 
         private async void AssignAuthor()

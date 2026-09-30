@@ -25,11 +25,11 @@ namespace PlaylistManager.UI
         private readonly PluginMetadata pluginMetadata;
         private readonly BSMLParser bsmlParser;
 
-        private readonly string IMAGES_PATH = Path.Combine(PlaylistLibUtils.playlistManager.PlaylistPath, "CoverImages");
         private readonly Task<Sprite> playlistManagerIcon;
-        private readonly Task imageDirectoryReady;
+        private readonly Task<string> imageDirectoryReady;
         private readonly Dictionary<string, CoverImage> coverImages;
         private bool parsed;
+        private bool disposed;
         private int selectedIndex;
         private int showRevision;
         private int imageChangeRevision;
@@ -59,27 +59,40 @@ namespace PlaylistManager.UI
             this.pluginMetadata = pluginMetadata.Value;
             this.bsmlParser = bsmlParser;
 
-            string directory = IMAGES_PATH;
-            imageDirectoryReady = Task.Run(() =>
-            {
-                try
-                {
-                    Directory.CreateDirectory(directory);
-                    var ignorePath = Path.Combine(directory, ".plignore");
-                    if (!File.Exists(ignorePath))
-                    {
-                        using (File.Create(ignorePath)) { }
-                    }
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.Error($"Could not make images path.\nExcepton:{e.Message}");
-                }
-            });
+            imageDirectoryReady = PrepareImageDirectoryAsync();
 
             coverImages = new Dictionary<string, CoverImage>();
             playlistManagerIcon = BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync("PlaylistManager.Icons.DefaultIcon.png");
             parsed = false;
+        }
+
+        private async Task<string> PrepareImageDirectoryAsync()
+        {
+            try
+            {
+                var manager = await PlaylistLibUtils.GetDefaultManagerAsync();
+                if (disposed) return null;
+                var catalog = PlaylistLibUtils.Catalog;
+                string directory = Path.Combine(manager.PlaylistPath, "CoverImages");
+                bool createdIgnore = await Task.Run(() =>
+                {
+                    Directory.CreateDirectory(directory);
+                    var ignorePath = Path.Combine(directory, ".plignore");
+                    if (File.Exists(ignorePath)) return false;
+                    using (File.Create(ignorePath)) { }
+                    return true;
+                });
+                await UnityGame.SwitchToMainThreadAsync();
+                if (disposed || !ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return null;
+                if (createdIgnore) await catalog.ScanAsync();
+                return directory;
+            }
+            catch (OperationCanceledException) { return null; }
+            catch (Exception e)
+            {
+                Plugin.Log.Error($"Could not make images path.\nExcepton:{e.Message}");
+                return null;
+            }
         }
 
         private void Parse()
@@ -94,6 +107,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             showRevision++;
             imageChangeRevision++;
             foreach (var cover in coverImages.Values) cover.Release();
@@ -111,6 +125,7 @@ namespace PlaylistManager.UI
 
         internal void ShowModal(BeatSaberPlaylistsLib.Types.IPlaylist playlist)
         {
+            if (disposed) return;
             shownPlaylist = playlist;
             Parse();
             parserParams.EmitEvent("close-modal");
@@ -121,8 +136,8 @@ namespace PlaylistManager.UI
         private async Task<bool> LoadImages(int revision)
         {
             string[] knownPaths = coverImages.Keys.ToArray();
-            string directory = IMAGES_PATH;
-            await imageDirectoryReady;
+            string directory = await imageDirectoryReady;
+            if (directory == null) return false;
             var files = await Task.Run(() =>
             {
                 string[] ext = { "jpg", "png" };

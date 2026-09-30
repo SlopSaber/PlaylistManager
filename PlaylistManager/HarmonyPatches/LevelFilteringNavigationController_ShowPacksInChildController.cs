@@ -15,7 +15,7 @@ namespace PlaylistManager.HarmonyPatches
         {
             if (__instance._selectLevelCategoryViewController.selectedLevelCategory == SelectLevelCategoryViewController.LevelCategory.CustomSongs)
             {
-                beatmapLevelPacks = beatmapLevelPacks.ToArray().AddRangeToArray(PlaylistLibUtils.TryGetAllPlaylistsAsLevelPacks());
+                beatmapLevelPacks = beatmapLevelPacks.ToArray().AddRangeToArray(PlaylistLibUtils.GetCachedPlaylistLevelPacks());
                 AllPacksViewSelectedEvent?.Invoke();
             }
         }

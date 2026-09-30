@@ -33,6 +33,7 @@ namespace PlaylistManager.UI
         private Sprite folderIcon;
         private bool parsed;
         private bool disposed;
+        private int showRequest;
         public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("list")]
@@ -67,12 +68,15 @@ namespace PlaylistManager.UI
             this.pluginMetadata = pluginMetadata.Value;
             this.bsmlParser = bsmlParser;
             _ = LoadFolderIconAsync();
+            PlaylistLibUtils.Catalog.Changed += CatalogChanged;
             parsed = false;
         }
 
         public void Dispose()
         {
             disposed = true;
+            showRequest++;
+            if (PlaylistLibUtils.Catalog != null) PlaylistLibUtils.Catalog.Changed -= CatalogChanged;
             foreach (var playlist in coverSubscriptions) playlist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
             coverSubscriptions.Clear();
         }
@@ -114,12 +118,26 @@ namespace PlaylistManager.UI
 
         #region Show Playlists
 
-        internal void ShowModal()
+        private void CatalogChanged()
         {
-            Parse();
-            parserParams.EmitEvent("close-modal");
-            parserParams.EmitEvent("open-modal");
-            ShowPlaylistsForManager(PlaylistLibUtils.playlistManager);
+            if (!disposed && parsed && parentManager != null && modalTransform && modalTransform.gameObject.activeInHierarchy)
+                ShowPlaylistsForManager(PlaylistLibUtils.Catalog.GetAvailableManager(parentManager));
+        }
+
+        internal async void ShowModal()
+        {
+            int request = ++showRequest;
+            try
+            {
+                var manager = await PlaylistLibUtils.GetDefaultManagerAsync();
+                if (disposed || request != showRequest) return;
+                Parse();
+                parserParams.EmitEvent("close-modal");
+                parserParams.EmitEvent("open-modal");
+                ShowPlaylistsForManager(manager);
+            }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         internal void ShowPlaylistsForManager(BeatSaberPlaylistsLib.PlaylistManager parentManager)
@@ -128,7 +146,7 @@ namespace PlaylistManager.UI
 
             this.parentManager = parentManager;
             childManagers = parentManager.GetChildManagers().ToList();
-            var childPlaylists = parentManager.GetAllPlaylists(false).Where(playlist => !playlist.ReadOnly);
+            var childPlaylists = PlaylistLibUtils.GetCachedPlaylists(parentManager).Where(playlist => !playlist.ReadOnly);
             this.childPlaylists = childPlaylists.ToList();
 
             foreach (var playlistManager in childManagers)
