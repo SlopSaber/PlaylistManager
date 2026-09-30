@@ -189,17 +189,21 @@ namespace PlaylistManager.UI
             }
 
             var manager = parentManager;
+            var originalParent = parentManager;
+            var catalog = PlaylistLibUtils.Catalog;
             try
             {
                 manager ??= await PlaylistLibUtils.GetDefaultManagerAsync();
                 if (disposed) return;
-                var playlist = PlaylistLibUtils.CreatePlaylistWithConfig(playlistName, manager);
-                await PlaylistLibUtils.Catalog.ScanAsync();
+                var playlist = await PlaylistLibUtils.CreatePlaylistWithConfigAsync(playlistName, manager);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                await catalog.ScanAsync();
                 await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
-                if (disposed) return;
+                if (disposed || !ReferenceEquals(parentManager, originalParent)) return;
                 popupModalsController.ShowYesNoModal(rootTransform, $"Successfully created {playlist.Title}", () =>
                 {
-                    if (disposed) return;
+                    if (disposed || !ReferenceEquals(catalog, PlaylistLibUtils.Catalog)
+                        || catalog.Manager.GetManagerForPlaylist(playlist) == null) return;
                     levelCategorySegmentedControl.SelectCellWithNumber(1);
                     selectLevelCategoryViewController.LevelFilterCategoryIconSegmentedControlDidSelectCell(levelCategorySegmentedControl, 1);
                     levelFilteringNavigationController.SelectAnnotatedBeatmapLevelCollection(playlist.PlaylistLevelPack);

@@ -28,6 +28,7 @@ namespace PlaylistManager.UI
 
         private bool parsed;
         private bool disposed;
+        private bool cloning;
         private IPlaylist selectedPlaylist;
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         public event PropertyChangedEventHandler PropertyChanged;
@@ -210,23 +211,34 @@ namespace PlaylistManager.UI
             }
         }
 
-        private void ClonePlaylist()
+        private async void ClonePlaylist()
         {
-            var playlistPath = Path.Combine(parentManager.PlaylistPath, $"{selectedPlaylist.Filename}.{selectedPlaylist.SuggestedExtension}");
-            if (File.Exists(playlistPath))
+            if (disposed || cloning || selectedPlaylist == null || parentManager == null) return;
+            var playlist = selectedPlaylist;
+            var manager = parentManager;
+            var catalog = PlaylistLibUtils.Catalog;
+            cloning = true;
+            try
             {
-                var clonedPlaylist = BeatSaberPlaylistsLib.PlaylistManager.DefaultManager.DefaultHandler?.Deserialize(File.OpenRead(playlistPath));
-                clonedPlaylist.ReadOnly = false;
-                selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist(clonedPlaylist);
-                PlaylistLibUtils.playlistManager.RequestRefresh("PlaylistManager (plugin)");
+                await PlaylistLibUtils.ClonePlaylistAsync(playlist, manager);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                await catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(parentManager, manager)) return;
                 popupModalsController.ShowOkModal(modalTransform, "Playlist Cloned!", null, animateParentCanvas: false);
             }
-            else
+            catch (OperationCanceledException) { }
+            catch (Exception e)
             {
-                popupModalsController.ShowOkModal(modalTransform, "An error occured while trying to clone the playlist. Please try again later.", null, animateParentCanvas: false);
+                Plugin.Log.Error(e);
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    popupModalsController.ShowOkModal(modalTransform, "An error occurred while trying to clone the playlist. Please try again later.", null, animateParentCanvas: false);
             }
-            UpdateReadOnly();
+            finally
+            {
+                cloning = false;
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist)) UpdateReadOnly();
+            }
         }
 
         private void UpdateReadOnly()

@@ -290,25 +290,28 @@ namespace PlaylistManager.UI
             parserParams.EmitEvent("close-dropdown");
         }
 
-        private void CreatePlaylist(string playlistName)
+        private async void CreatePlaylist(string playlistName)
         {
             if (string.IsNullOrWhiteSpace(playlistName))
             {
                 return;
             }
 
-            var playlist = PlaylistLibUtils.CreatePlaylistWithConfig(playlistName, parentManager);
-
-            if (playlist is IDeferredSpriteLoad deferredSpriteLoadPlaylist && !deferredSpriteLoadPlaylist.SpriteWasLoaded)
+            var manager = parentManager;
+            var catalog = PlaylistLibUtils.Catalog;
+            int request = showRequest;
+            if (disposed || manager == null) return;
+            try
             {
-                deferredSpriteLoadPlaylist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
-                deferredSpriteLoadPlaylist.SpriteLoaded += StagedSpriteLoadPlaylist_SpriteLoaded;
-                coverSubscriptions.Add(playlist);
-                _ = playlist.Sprite;
+                await PlaylistLibUtils.CreatePlaylistWithConfigAsync(playlistName, manager);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                await catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed || request != showRequest || !ReferenceEquals(parentManager, manager)) return;
+                if (modalTransform && modalTransform.gameObject.activeInHierarchy) ShowPlaylistsForManager(manager);
             }
-
-            childPlaylists.Add(playlist);
-            playlistTableData.TableView.ReloadDataKeepingPosition();
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         private void CreateFolder(string folderName)

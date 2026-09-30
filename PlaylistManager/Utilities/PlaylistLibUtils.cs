@@ -86,6 +86,26 @@ namespace PlaylistManager.Utilities
             return CreatePlaylist(playlistName, playlistAuthorName, playlistManager, !PluginConfig.Instance.DefaultImageDisabled, PluginConfig.Instance.DefaultAllowDuplicates, easterEgg);
         }
 
+        internal static Task<IPlaylist> CreatePlaylistWithConfigAsync(string playlistName, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            string author = PluginConfig.Instance.AuthorName;
+            bool defaultCover = !PluginConfig.Instance.DefaultImageDisabled;
+            var data = new Dictionary<string, object>();
+            if (!PluginConfig.Instance.DefaultAllowDuplicates) data.Add("AllowDuplicates", false);
+            if (PluginConfig.Instance.EasterEggs && author.IndexOf("BINTER", StringComparison.OrdinalIgnoreCase) >= 0
+                && playlistName.IndexOf("TECH", StringComparison.OrdinalIgnoreCase) >= 0) data.Add("syncURL", EASTER_EGG_URL);
+            var assembly = Assembly.GetExecutingAssembly();
+            Func<Stream> cover = defaultCover ? () => assembly.GetManifestResourceStream(ICON_PATH) : null;
+            savingManagers.Add(manager);
+            return manager.CreatePlaylistAsync(playlistName, author, cover, data);
+        }
+
+        internal static Task<IPlaylist> ClonePlaylistAsync(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            savingManagers.Add(manager);
+            return manager.ClonePlaylistAsync(playlist);
+        }
+
         public static IPlaylist CreatePlaylist(string playlistName, string playlistAuthorName, BeatSaberPlaylistsLib.PlaylistManager playlistManager, bool defaultCover = true,
             bool allowDups = true, bool easterEgg = false)
         {
