@@ -1,7 +1,8 @@
-﻿using BeatSaberPlaylistsLib.Types;
+using BeatSaberPlaylistsLib.Types;
 using BeatSaverSharp;
 using BeatSaverSharp.Models;
 using IPA.Loader;
+using IPA.Utilities;
 using PlaylistManager.Configuration;
 using PlaylistManager.Types;
 using SiraUtil.Web;
@@ -30,6 +31,7 @@ namespace PlaylistManager.Downloaders
 
         private readonly SemaphoreSlim pauseSemaphore;
         private readonly SemaphoreSlim popupSemaphore;
+        private readonly CancellationTokenSource lifetimeCancellation = new();
         private bool preferCustomArchiveURL;
         private bool ignoredDiskWarning;
         private bool disposed;
@@ -80,6 +82,7 @@ namespace PlaylistManager.Downloaders
         public void Dispose()
         {
             disposed = true;
+            lifetimeCancellation.Cancel();
             if (currentDownload != null && !currentDownload.cancellationTokenSource.IsCancellationRequested)
             {
                 currentDownload.cancellationTokenSource.Cancel();
@@ -96,6 +99,15 @@ namespace PlaylistManager.Downloaders
 
         public void QueuePlaylist(DownloadQueueEntry downloadQueueEntry)
         {
+            if (!UnityGame.OnMainThread)
+            {
+                _ = IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(() =>
+                {
+                    try { QueuePlaylist(downloadQueueEntry); }
+                    catch (Exception e) { Plugin.Log.Error(e); }
+                });
+                return;
+            }
             downloadQueue.Add(downloadQueueEntry);
             OnPlaylistQueued(downloadQueueEntry);
         }
@@ -117,17 +129,22 @@ namespace PlaylistManager.Downloaders
         private async void IterateQueue()
         {
             await downloadSemaphore.WaitAsync();
-            if (downloadQueue.Count > 0 && !disposed)
+            try
             {
-                var toDownload = downloadQueue.OfType<DownloadQueueEntry>().FirstOrDefault();
-                await DownloadPlaylist(toDownload);
-                if (!disposed)
+                await UnityGame.SwitchToMainThreadAsync();
+                if (downloadQueue.Count > 0 && !disposed)
                 {
-                    downloadQueue.Remove(toDownload);
+                    var toDownload = downloadQueue.OfType<DownloadQueueEntry>().FirstOrDefault();
+                    if (toDownload == null) return;
+                    await DownloadPlaylist(toDownload);
+                    await UnityGame.SwitchToMainThreadAsync();
+                    if (!disposed) downloadQueue.Remove(toDownload);
+                    QueueUpdatedEvent?.Invoke();
                 }
-                QueueUpdatedEvent?.Invoke();
             }
-            downloadSemaphore.Release();
+            catch (OperationCanceledException) when (disposed) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
+            finally { downloadSemaphore.Release(); }
         }
 
         internal void OnQueueClear()
@@ -169,121 +186,154 @@ namespace PlaylistManager.Downloaders
 
         private async Task DownloadPlaylist(DownloadQueueEntry downloadQueueEntry)
         {
+            await UnityGame.SwitchToMainThreadAsync();
             currentDownload = downloadQueueEntry;
-            var missingSongs = PlaylistLibUtils.GetMissingSongs(downloadQueueEntry.playlist, ownedHashes);
-            downloadQueueEntry.SetMissingLevels(missingSongs.Count);
-            downloadQueueEntry.SetTotalProgress(0);
-
-            preferCustomArchiveURL = true;
-            var shownCustomArchiveWarning = false;
-
-            for (var i = 0; i < missingSongs.Count; i++)
+            try
             {
-                if (preferCustomArchiveURL && missingSongs[i].TryGetCustomData("customArchiveURL", out var outCustomArchiveURL))
+                var missingSongs = PlaylistLibUtils.GetMissingSongs(downloadQueueEntry.playlist, ownedHashes);
+                downloadQueueEntry.SetMissingLevels(missingSongs.Count);
+                downloadQueueEntry.SetTotalProgress(0);
+
+                preferCustomArchiveURL = true;
+                var shownCustomArchiveWarning = false;
+
+                for (var i = 0; i < missingSongs.Count; i++)
                 {
-                    var customArchiveURL = (string)outCustomArchiveURL;
-                    var identifier = PlaylistLibUtils.GetIdentifierForPlaylistSong(missingSongs[i]);
-                    if (identifier == "")
+                    bool downloadSkipped = false;
+                    if (preferCustomArchiveURL && missingSongs[i].TryGetCustomData("customArchiveURL", out var outCustomArchiveURL))
                     {
-                        continue;
-                    }
-
-                    if (!shownCustomArchiveWarning)
-                    {
-                        shownCustomArchiveWarning = true;
-                        PendingPopup = new YesNoPopupContents("This playlist uses mirror download links. Would you like to use them?", () => SetCustomArchivePreference(true),
-                             noButtonPressedCallback: () => SetCustomArchivePreference(false), animateParentCanvas: false);
-
-                        await popupSemaphore.WaitAsync();
-                        PendingPopup = null;
-
-                        if (!preferCustomArchiveURL)
+                        var customArchiveURL = (string)outCustomArchiveURL;
+                        var identifier = PlaylistLibUtils.GetIdentifierForPlaylistSong(missingSongs[i]);
+                        if (identifier == "")
                         {
-                            i--;
                             continue;
                         }
+
+                        if (!shownCustomArchiveWarning)
+                        {
+                            shownCustomArchiveWarning = true;
+                            if (!await RequestCustomArchivePreference(downloadQueueEntry.cancellationTokenSource.Token))
+                            {
+                                shownCustomArchiveWarning = false;
+                                downloadSkipped = true;
+                            }
+                            else if (!preferCustomArchiveURL)
+                            {
+                                i--;
+                                continue;
+                            }
+                        }
+                        if (!downloadSkipped)
+                            await BeatmapDownloadByCustomURL(customArchiveURL, identifier, downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
+                        await UnityGame.SwitchToMainThreadAsync();
                     }
-                    await BeatmapDownloadByCustomURL(customArchiveURL, identifier, downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
-                }
-                else if (!string.IsNullOrEmpty(missingSongs[i].Hash))
-                {
-                    await BeatmapDownloadByHash(missingSongs[i].Hash, downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
-                }
-                else if (!string.IsNullOrEmpty(missingSongs[i].Key))
-                {
-                    var hash = await BeatmapDownloadByKey(missingSongs[i].Key.ToLowerInvariant(), downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
-                    if (!string.IsNullOrEmpty(hash))
+                    else if (!string.IsNullOrEmpty(missingSongs[i].Hash))
                     {
-                        missingSongs[i].Hash = hash;
+                        await BeatmapDownloadByHash(missingSongs[i].Hash, downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
+                        await UnityGame.SwitchToMainThreadAsync();
+                    }
+                    else if (!string.IsNullOrEmpty(missingSongs[i].Key))
+                    {
+                        var hash = await BeatmapDownloadByKey(missingSongs[i].Key.ToLowerInvariant(), downloadQueueEntry.cancellationTokenSource.Token, downloadQueueEntry);
+                        await UnityGame.SwitchToMainThreadAsync();
+                        if (!string.IsNullOrEmpty(hash))
+                        {
+                            missingSongs[i].Hash = hash;
+                        }
+                    }
+
+                    if (!downloadSkipped) downloadQueueEntry.SetTotalProgress(i + 1);
+
+                    if (downloadQueueEntry.Aborted)
+                    {
+                        break;
+                    }
+
+                    if (disposed)
+                    {
+                        return;
+                    }
+
+                    if (downloadQueueEntry.cancellationTokenSource.IsCancellationRequested)
+                    {
+                        // If we directly cancel, it is a pause. So we wait at this semaphore till it is released.
+                        await pauseSemaphore.WaitAsync(lifetimeCancellation.Token);
+                        await UnityGame.SwitchToMainThreadAsync();
+                        i--;
+                        downloadQueueEntry.cancellationTokenSource = new CancellationTokenSource();
                     }
                 }
 
-                downloadQueueEntry.SetTotalProgress(i + 1);
+                downloadQueueEntry.playlist.RaisePlaylistChanged();
+                downloadQueueEntry.parentManager.StorePlaylist(downloadQueueEntry.playlist);
 
-                if (downloadQueueEntry.Aborted)
+                if (downloadQueueEntry.playlist is BeatSaberPlaylistsLib.Types.Playlist playlist)
                 {
-                    break;
-                }
-
-                if (disposed)
-                {
-                    // If downloader is disposed, a soft restart is happening. Reinstantiate the cancellation token and leave.
-                    downloadQueueEntry.cancellationTokenSource = new CancellationTokenSource();
-                    return;
-                }
-
-                if (downloadQueueEntry.cancellationTokenSource.IsCancellationRequested)
-                {
-                    // If we directly cancel, it is a pause. So we wait at this semaphore till it is released.
-                    await pauseSemaphore.WaitAsync();
-                    i--;
-                    downloadQueueEntry.cancellationTokenSource = new CancellationTokenSource();
+                    coversToRefresh.AddLast(playlist);
                 }
             }
-
-            downloadQueueEntry.playlist.RaisePlaylistChanged();
-            downloadQueueEntry.parentManager.StorePlaylist(downloadQueueEntry.playlist);
-
-            if (downloadQueueEntry.playlist is BeatSaberPlaylistsLib.Types.Playlist playlist)
+            finally
             {
-                coversToRefresh.AddLast(playlist);
+                await UnityGame.SwitchToMainThreadAsync();
+                if (disposed && !downloadQueueEntry.Aborted)
+                    downloadQueueEntry.cancellationTokenSource = new CancellationTokenSource();
+                downloadQueueEntry.DownloadAbortedEvent -= OnDownloadAborted;
+                currentDownload = null;
             }
-
-            downloadQueueEntry.DownloadAbortedEvent -= OnDownloadAborted;
-            currentDownload = null;
         }
 
-        private void SetCustomArchivePreference(bool preferCustomArchiveURL)
+        private async Task<bool> RequestCustomArchivePreference(CancellationToken token)
         {
-            this.preferCustomArchiveURL = preferCustomArchiveURL;
-            popupSemaphore.Release();
+            PopupContents popup = null;
+            bool answered = false;
+            void Choose(bool useMirror)
+            {
+                if (disposed || answered || token.IsCancellationRequested || !ReferenceEquals(PendingPopup, popup)) return;
+                answered = true;
+                preferCustomArchiveURL = useMirror;
+                popupSemaphore.Release();
+            }
+            popup = new YesNoPopupContents("This playlist uses mirror download links. Would you like to use them?", () => Choose(true),
+                noButtonPressedCallback: () => Choose(false), animateParentCanvas: false);
+            PendingPopup = popup;
+            try
+            {
+                await popupSemaphore.WaitAsync(token);
+                return true;
+            }
+            catch (OperationCanceledException) { return false; }
+            finally
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                if (ReferenceEquals(PendingPopup, popup)) PendingPopup = null;
+            }
         }
 
         #region Map Download
 
         private async Task BeatSaverBeatmapDownload(Beatmap song, BeatmapVersion songversion, CancellationToken token, IProgress<double> progress = null)
         {
+            await UnityGame.SwitchToMainThreadAsync();
             var customSongsPath = CustomLevelPathHelper.customLevelsDirectoryPath;
-            if (!Directory.Exists(customSongsPath))
-            {
-                Directory.CreateDirectory(customSongsPath);
-            }
-
-            if (!ownedHashes.Contains(songversion.Hash))
+            string hash = songversion.Hash;
+            if (!ownedHashes.Contains(hash))
             {
                 var zip = await songversion.DownloadZIP(token, progress).ConfigureAwait(false);
-                await ExtractZipAsync(zip, customSongsPath, FolderNameForBeatsaverMap(song)).ConfigureAwait(false);
-                ownedHashes.Add(songversion.Hash);
+                bool extracted = await ExtractZipAsync(zip, customSongsPath, FolderNameForBeatsaverMap(song), token).ConfigureAwait(false);
+                await UnityGame.SwitchToMainThreadAsync();
+                if (extracted) ownedHashes.Add(hash);
             }
         }
 
         private async Task<string> BeatmapDownloadByKey(string key, CancellationToken token, IProgress<double> progress = null)
         {
+            await UnityGame.SwitchToMainThreadAsync();
             if (!token.IsCancellationRequested)
             {
                 try
                 {
                     var song = await beatSaverInstance.Beatmap(key, token);
+                    await UnityGame.SwitchToMainThreadAsync();
                     if (song == null)
                     {
                         Plugin.Log.Error($"Failed to download Song {key}. Unable to find a beatmap for that hash.");
@@ -298,7 +348,7 @@ namespace PlaylistManager.Downloaders
                 }
                 catch (Exception e)
                 {
-                    if (e is not TaskCanceledException)
+                    if (e is not OperationCanceledException)
                     {
                         Plugin.Log.Error($"Failed to download Song {key}. Exception: {e}");
                     }
@@ -309,6 +359,7 @@ namespace PlaylistManager.Downloaders
 
         private async Task BeatmapDownloadByHash(string hash, CancellationToken token, IProgress<double> progress = null)
         {
+            await UnityGame.SwitchToMainThreadAsync();
             if (!token.IsCancellationRequested)
             {
                 try
@@ -340,7 +391,7 @@ namespace PlaylistManager.Downloaders
                 }
                 catch (Exception e)
                 {
-                    if (e is not TaskCanceledException)
+                    if (e is not OperationCanceledException)
                     {
                         Plugin.Log.Error($"Failed to download Song {hash}. Exception: {e}");
                     }
@@ -350,20 +401,18 @@ namespace PlaylistManager.Downloaders
 
         private async Task BeatmapDownloadByCustomURL(string url, string songName, CancellationToken token, IProgress<float> progress = null)
         {
+            await UnityGame.SwitchToMainThreadAsync();
             if (!token.IsCancellationRequested)
             {
                 try
                 {
                     var customSongsPath = CustomLevelPathHelper.customLevelsDirectoryPath;
-                    if (!Directory.Exists(customSongsPath))
-                    {
-                        Directory.CreateDirectory(customSongsPath);
-                    }
                     var httpResponse = await siraHttpService.GetAsync(url, progress, token);
+                    await UnityGame.SwitchToMainThreadAsync();
                     if (httpResponse.Successful)
                     {
                         var zip = await httpResponse.ReadAsByteArrayAsync();
-                        await ExtractZipAsync(zip, customSongsPath, songName).ConfigureAwait(false);
+                        await ExtractZipAsync(zip, customSongsPath, songName, token).ConfigureAwait(false);
                     }
                     else
                     {
@@ -372,7 +421,7 @@ namespace PlaylistManager.Downloaders
                 }
                 catch (Exception e)
                 {
-                    if (e is not TaskCanceledException)
+                    if (e is not OperationCanceledException)
                     {
                         Plugin.Log.Error($"Failed to download Song {url}");
                     }
@@ -387,16 +436,31 @@ namespace PlaylistManager.Downloaders
             return longFolderName.Truncate(49, true) + ")";
         }
 
-        private async Task ExtractZipAsync(byte[] zip, string customSongsPath, string songName, bool overwrite = false)
+        private sealed class PreparedArchive : IDisposable
         {
-            Stream zipStream = new MemoryStream(zip);
+            internal readonly ZipArchive Archive;
+            internal readonly string Path;
+            internal readonly bool NeedsDiskWarning;
+
+            internal PreparedArchive(ZipArchive archive, string path, bool needsDiskWarning)
+            {
+                Archive = archive;
+                Path = path;
+                NeedsDiskWarning = needsDiskWarning;
+            }
+
+            public void Dispose() => Archive.Dispose();
+        }
+
+        private static PreparedArchive PrepareArchive(byte[] zip, string customSongsPath, string songName, bool checkDisk, bool overwrite)
+        {
+            var stream = new MemoryStream(zip);
+            ZipArchive archive = null;
             try
             {
-                using var archive = new ZipArchive(zipStream, ZipArchiveMode.Read);
-                var basePath = "";
-                basePath = string.Join("", songName.Split(Path.GetInvalidFileNameChars().Concat(Path.GetInvalidPathChars()).ToArray()));
+                archive = new ZipArchive(stream, ZipArchiveMode.Read);
+                var basePath = string.Join("", songName.Split(Path.GetInvalidFileNameChars().Concat(Path.GetInvalidPathChars()).ToArray()));
                 var path = Path.Combine(customSongsPath, basePath);
-
                 if (!overwrite && Directory.Exists(path))
                 {
                     var pathNum = 1;
@@ -404,58 +468,82 @@ namespace PlaylistManager.Downloaders
                     path += $" ({pathNum})";
                 }
 
-                if (PluginConfig.Instance.DriveFullProtection)
+                bool needsDiskWarning = false;
+                if (checkDisk)
                 {
                     var driveInfo = new DriveInfo(Path.GetPathRoot(path));
-
                     long totalSize = 0;
                     foreach (var entry in archive.Entries)
-                    {
                         totalSize += entry.Length;
-                    }
+                    needsDiskWarning = driveInfo.AvailableFreeSpace - totalSize < 104857600;
+                }
+                return new PreparedArchive(archive, path, needsDiskWarning);
+            }
+            catch
+            {
+                archive?.Dispose();
+                stream.Dispose();
+                throw;
+            }
+        }
 
-                    if (driveInfo.AvailableFreeSpace - totalSize < 104857600 && !ignoredDiskWarning) // If less than 100MB
+        private async Task<bool> ExtractZipAsync(byte[] zip, string customSongsPath, string songName, CancellationToken token, bool overwrite = false)
+        {
+            await UnityGame.SwitchToMainThreadAsync();
+            bool checkDisk = PluginConfig.Instance.DriveFullProtection && !ignoredDiskWarning;
+            PreparedArchive prepared = null;
+            PopupContents diskPopup = null;
+            try
+            {
+                prepared = await Task.Run(() => PrepareArchive(zip, customSongsPath, songName, checkDisk, overwrite), token);
+                await UnityGame.SwitchToMainThreadAsync();
+                token.ThrowIfCancellationRequested();
+                if (disposed) return false;
+                if (prepared.NeedsDiskWarning)
+                {
+                    CreateDrivePopup(token);
+                    diskPopup = PendingPopup;
+                    await popupSemaphore.WaitAsync(token);
+                    await UnityGame.SwitchToMainThreadAsync();
+                    PendingPopup = null;
+                    if (!ignoredDiskWarning)
                     {
-                        CreateDrivePopup();
-
-                        await popupSemaphore.WaitAsync();
-                        PendingPopup = null;
-
-                        if (!ignoredDiskWarning)
-                        {
-                            currentDownload.AbortDownload();
-                            downloadQueue.Clear();
-                            downloadQueue.Add(currentDownload); // Add it back because we remove the first element of queue after a download
-                            return;
-                        }
+                        currentDownload.AbortDownload();
+                        downloadQueue.Clear();
+                        downloadQueue.Add(currentDownload);
+                        return false;
                     }
                 }
-
-                if (!Directory.Exists(path))
-                    Directory.CreateDirectory(path);
-                await Task.Run(() =>
+                return await Task.Run(() =>
                 {
-                    foreach (var entry in archive.Entries)
+                    Directory.CreateDirectory(prepared.Path);
+                    foreach (var entry in prepared.Archive.Entries)
                     {
                         if (!string.IsNullOrWhiteSpace(entry.Name) && entry.Name == entry.FullName)
                         {
-                            var entryPath = Path.Combine(path, entry.Name); // Name instead of FullName for better security and because song zips don't have nested directories anyway
+                            var entryPath = Path.Combine(prepared.Path, entry.Name); // Name instead of FullName for better security and because song zips don't have nested directories anyway
                             if (overwrite || !File.Exists(entryPath)) // Either we're overwriting or there's no existing file
                                 entry.ExtractToFile(entryPath, overwrite);
                         }
                     }
-                }).ConfigureAwait(false);
-                archive.Dispose();
+                    return true;
+                }, token).ConfigureAwait(false);
             }
+            catch (OperationCanceledException) { throw; }
             catch (Exception e)
             {
                 Plugin.Log.Error($"Unable to extract ZIP! Exception: {e}");
-                return;
+                return false;
             }
-            zipStream.Close();
+            finally
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                if (diskPopup != null && ReferenceEquals(PendingPopup, diskPopup)) PendingPopup = null;
+                if (prepared != null) await Task.Run(prepared.Dispose).ConfigureAwait(false);
+            }
         }
 
-        private void CreateDrivePopup()
+        private void CreateDrivePopup(CancellationToken token)
         {
             var popupText = "You are running out of disk space (less than 100MB), continuing the download can cause issues such as corrupt game configs" +
                             " (as there may not be enough space to save them).";
@@ -465,16 +553,23 @@ namespace PlaylistManager.Downloaders
                 popupText = "Remember the October 26th, 2021 \"JoeSaber\" incident? Wanna do it again?";
             }
 
-            PendingPopup = new YesNoPopupContents(popupText, yesButtonText: "Continue", noButtonText: "Abort", yesButtonPressedCallback: () =>
+            PopupContents popup = null;
+            bool answered = false;
+            popup = new YesNoPopupContents(popupText, yesButtonText: "Continue", noButtonText: "Abort", yesButtonPressedCallback: () =>
             {
+                if (disposed || answered || token.IsCancellationRequested || !ReferenceEquals(PendingPopup, popup)) return;
+                answered = true;
                 ignoredDiskWarning = true;
                 popupSemaphore.Release();
             },
             noButtonPressedCallback: () =>
             {
+                if (disposed || answered || token.IsCancellationRequested || !ReferenceEquals(PendingPopup, popup)) return;
+                answered = true;
                 ignoredDiskWarning = false;
                 popupSemaphore.Release();
             }, animateParentCanvas: false);
+            PendingPopup = popup;
         }
 
         #endregion

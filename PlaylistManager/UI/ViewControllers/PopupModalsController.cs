@@ -21,6 +21,7 @@ namespace PlaylistManager.UI
 
         private Action yesButtonPressed;
         private Action noButtonPressed;
+        private PopupContents currentYesNoPopup;
         private Action okButtonPressed;
 
         private Action<string> keyboardPressed;
@@ -114,12 +115,14 @@ namespace PlaylistManager.UI
         {
             ShowYesNoModal(popupContents.parent, popupContents.message, popupContents.yesButtonPressedCallback, popupContents.yesButtonText,
                 popupContents.noButtonText, popupContents.noButtonPressedCallback, popupContents.animateParentCanvas, popupContents.checkboxText);
+            currentYesNoPopup = popupContents;
         }
 
         internal void ShowYesNoModal(Transform parent, string text, Action yesButtonPressedCallback, string yesButtonText = "Yes", string noButtonText = "No", Action noButtonPressedCallback = null, bool animateParentCanvas = true, string checkboxText = "")
         {
             Parse();
             yesNoModalTransform.localPosition = yesNoModalPosition;
+            currentYesNoPopup = null;
             yesNoModalTransform.transform.SetParent(parent);
 
             YesNoText = text;
@@ -140,7 +143,16 @@ namespace PlaylistManager.UI
             parserParams.EmitEvent("open-yes-no");
         }
 
-        internal void HideYesNoModal() => parserParams.EmitEvent("close-yes-no");
+        internal void HideYesNoModal()
+        {
+            currentYesNoPopup = null;
+            parserParams.EmitEvent("close-yes-no");
+        }
+
+        internal void HideYesNoModal(PopupContents popup)
+        {
+            if (popup != null && ReferenceEquals(currentYesNoPopup, popup)) HideYesNoModal();
+        }
 
         [UIAction("yes-button-pressed")]
         private void YesButtonPressed()

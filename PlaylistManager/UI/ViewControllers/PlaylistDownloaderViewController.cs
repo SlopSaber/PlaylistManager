@@ -5,6 +5,7 @@ using HMUI;
 using System;
 using IPA.Loader;
 using PlaylistManager.Downloaders;
+using PlaylistManager.Types;
 using SiraUtil.Zenject;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -20,6 +21,8 @@ namespace PlaylistManager.UI
         private BSMLParser bsmlParser;
         private bool parsed;
         private bool refreshRequested;
+        private bool disposed;
+        private PopupContents shownPopup;
 
         [UIComponent("download-list")]
         private CustomCellListTableData customListTableData { get; set; }
@@ -51,7 +54,8 @@ namespace PlaylistManager.UI
         {
             if (playlistDownloader.PendingPopup != null)
             {
-                popupModalsController.HideYesNoModal();
+                popupModalsController.HideYesNoModal(shownPopup);
+                shownPopup = null;
             }
         }
 
@@ -64,6 +68,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             playlistDownloader.PopupEvent -= OnPopupRequested;
             playlistDownloader.QueueUpdatedEvent -= UpdateQueue;
             SceneManager.activeSceneChanged -= OnMenuLoaded;
@@ -80,19 +85,32 @@ namespace PlaylistManager.UI
 
         private void OnPopupRequested()
         {
-            if (playlistDownloader.PendingPopup != null && parsed)
+            var popup = playlistDownloader.PendingPopup;
+            if (!disposed && parsed)
             {
-                IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(DontMessWithGameObjectsOffMainThread);
+                _ = IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(() =>
+                {
+                    try { ShowPendingPopup(popup); }
+                    catch (Exception e) { Plugin.Log.Error(e); }
+                });
             }
         }
 
-        private void DontMessWithGameObjectsOffMainThread()
+        private void ShowPendingPopup(PopupContents popup)
         {
-            playlistDownloader.PendingPopup.parent = rootTransform;
-            playlistDownloader.PendingPopup.animateParentCanvas = !rootTransform.GetComponentInParent<ModalView>();
+            if (disposed || !rootTransform || !ReferenceEquals(playlistDownloader.PendingPopup, popup)) return;
+            if (popup == null)
+            {
+                if (shownPopup != null) popupModalsController.HideYesNoModal(shownPopup);
+                shownPopup = null;
+                return;
+            }
+            popup.parent = rootTransform;
+            popup.animateParentCanvas = !rootTransform.GetComponentInParent<ModalView>();
             if (rootTransform.gameObject.activeInHierarchy)
             {
-                popupModalsController.ShowModal(playlistDownloader.PendingPopup);
+                popupModalsController.ShowModal(popup);
+                shownPopup = popup;
             }
         }
 
