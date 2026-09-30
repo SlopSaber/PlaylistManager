@@ -17,7 +17,7 @@ namespace PlaylistManager.HarmonyPatches
         {
             if (__instance._beatmapLevelPack is PlaylistLevelPack playlistLevelPack)
             {
-                __instance.SetDownloadIconVisible(PluginConfig.Instance.ShowDownloadIcon && PlaylistLibUtils.GetMissingSongs(playlistLevelPack.playlist).Count > 0);
+                __instance.SetDownloadIconVisible(PluginConfig.Instance.ShowDownloadIcon && PlaylistLibUtils.HasMissingSongs(playlistLevelPack.playlist));
             }
         }
     }

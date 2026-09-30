@@ -190,7 +190,11 @@ namespace PlaylistManager.Downloaders
             currentDownload = downloadQueueEntry;
             try
             {
-                var missingSongs = PlaylistLibUtils.GetMissingSongs(downloadQueueEntry.playlist, ownedHashes);
+                var missingSongs = await PlaylistLibUtils.GetMissingSongsAsync(downloadQueueEntry.playlist, ownedHashes, lifetimeCancellation.Token);
+                await UnityGame.SwitchToMainThreadAsync();
+                if (disposed || downloadQueueEntry.Aborted || !downloadQueue.Contains(downloadQueueEntry)) return;
+                await downloadQueueEntry.parentManager.WaitForPlaylistFilePublicationAsync(downloadQueueEntry.playlist);
+                if (disposed || downloadQueueEntry.Aborted || !downloadQueue.Contains(downloadQueueEntry)) return;
                 downloadQueueEntry.SetMissingLevels(missingSongs.Count);
                 downloadQueueEntry.SetTotalProgress(0);
 

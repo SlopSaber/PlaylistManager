@@ -41,6 +41,9 @@ namespace PlaylistManager.UI
         private DownloadQueueEntry _downloadQueueEntry;
         private bool disposed;
         private bool deleting;
+        private bool refreshingMissingSongs;
+        private long missingSongsRevision;
+        private readonly CancellationTokenSource lifetimeCancellation = new();
         private CancellationTokenSource syncCancellation;
 
         public event Action<IReadOnlyList<BeatmapLevelPack>, int> LevelCollectionTableViewUpdatedEvent;
@@ -95,8 +98,12 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            if (disposed) return;
             disposed = true;
+            lifetimeCancellation.Cancel();
+            if (!refreshingMissingSongs) lifetimeCancellation.Dispose();
             syncCancellation?.Cancel();
+            if (selectedPlaylist != null) selectedPlaylist.PlaylistChanged -= SelectedPlaylistChanged;
             levelPackDetailViewController.didActivateEvent -= PackViewActivated;
             playlistDownloader.QueueUpdatedEvent -= OnQueueUpdated;
         }
@@ -186,6 +193,7 @@ namespace PlaylistManager.UI
 
         private void OnQueueUpdated()
         {
+            if (disposed) return;
             if (PlaylistSequentialDownloader.downloadQueue.Count == 0)
             {
                 DownloadQueueEntry = null;
@@ -193,7 +201,69 @@ namespace PlaylistManager.UI
             }
         }
 
-        private void UpdateMissingSongs() => MissingSongs = PlaylistLibUtils.GetMissingSongs(selectedPlaylist);
+        private void SelectedPlaylistChanged(object sender, EventArgs args)
+        {
+            if (!disposed && ReferenceEquals(sender, selectedPlaylist)) UpdateMissingSongs();
+        }
+
+        private void UpdateMissingSongs()
+        {
+            ++missingSongsRevision;
+            if (disposed) return;
+            bool start = !refreshingMissingSongs;
+            refreshingMissingSongs = true;
+            MissingSongs = null;
+            if (!start) return;
+            RefreshMissingSongs();
+        }
+
+        private async void RefreshMissingSongs()
+        {
+            try
+            {
+                while (!disposed)
+                {
+                    long revision = missingSongsRevision;
+                    var playlist = selectedPlaylist;
+                    var manager = parentManager;
+                    List<IPlaylistSong> missing;
+                    try
+                    {
+                        missing = await PlaylistLibUtils.GetMissingSongsAsync(playlist, cancellationToken: lifetimeCancellation.Token);
+                        await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                        if (disposed) return;
+                        if (revision != missingSongsRevision || !ReferenceEquals(selectedPlaylist, playlist)
+                            || !ReferenceEquals(parentManager, manager)) continue;
+                        if (playlist != null && manager != null) await manager.WaitForPlaylistFilePublicationAsync(playlist);
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                        if (!disposed && !lifetimeCancellation.IsCancellationRequested && revision != missingSongsRevision) continue;
+                        return;
+                    }
+                    catch (Exception e)
+                    {
+                        await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                        Plugin.Log.Error(e);
+                        if (!disposed && revision != missingSongsRevision) continue;
+                        return;
+                    }
+                    if (disposed) return;
+                    if (revision != missingSongsRevision || !ReferenceEquals(selectedPlaylist, playlist)
+                        || !ReferenceEquals(parentManager, manager)) continue;
+                    MissingSongs = playlist == null ? null : missing;
+                    return;
+                }
+            }
+            finally
+            {
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                refreshingMissingSongs = false;
+                if (disposed) lifetimeCancellation.Dispose();
+                if (!disposed) PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(DownloadHint)));
+            }
+        }
 
         private List<IPlaylistSong> MissingSongs
         {
@@ -228,6 +298,9 @@ namespace PlaylistManager.UI
                 {
                     return "Playlist is downloading";
                 }
+
+                if (MissingSongs == null && selectedPlaylist != null)
+                    return refreshingMissingSongs ? "Checking missing songs..." : "Couldn't check missing songs.";
 
                 if (MissingSongs != null && MissingSongs.Count > 0)
                 {
@@ -376,11 +449,14 @@ namespace PlaylistManager.UI
 
         public void LevelCollectionUpdated(BeatmapLevelPack selectedBeatmapLevelCollection, BeatSaberPlaylistsLib.PlaylistManager parentManager)
         {
+            if (disposed) return;
+            if (selectedPlaylist != null) selectedPlaylist.PlaylistChanged -= SelectedPlaylistChanged;
             if (selectedBeatmapLevelCollection is not PlaylistLevelPack currentPack || !ReferenceEquals(selectedPlaylist, currentPack.playlist))
                 syncCancellation?.Cancel();
             if (selectedBeatmapLevelCollection is PlaylistLevelPack playlistLevelPack)
             {
                 selectedPlaylist = playlistLevelPack.playlist;
+                selectedPlaylist.PlaylistChanged += SelectedPlaylistChanged;
                 this.parentManager = parentManager;
                 DownloadQueueEntry = PlaylistSequentialDownloader.downloadQueue.OfType<DownloadQueueEntry>().FirstOrDefault(x => x.playlist == selectedPlaylist);
                 UpdateMissingSongs();
@@ -399,6 +475,7 @@ namespace PlaylistManager.UI
             {
                 selectedPlaylist = null;
                 this.parentManager = null;
+                ++missingSongsRevision;
                 MissingSongs = null;
                 rootTransform.gameObject.SetActive(false);
             }

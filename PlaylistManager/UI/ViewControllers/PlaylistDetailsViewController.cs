@@ -2,8 +2,6 @@
 using BeatSaberMarkupLanguage.Attributes;
 using BeatSaberMarkupLanguage.Components;
 using BeatSaberMarkupLanguage.Parser;
-using BeatSaberPlaylistsLib.Blist;
-using BeatSaberPlaylistsLib.Legacy;
 using BeatSaberPlaylistsLib.Types;
 using HMUI;
 using PlaylistManager.Interfaces;
@@ -11,6 +9,7 @@ using PlaylistManager.Utilities;
 using System;
 using System.ComponentModel;
 using System.IO;
+using System.Threading;
 using IPA.Loader;
 using SiraUtil.Zenject;
 using UnityEngine;
@@ -29,6 +28,7 @@ namespace PlaylistManager.UI
         private bool parsed;
         private bool disposed;
         private bool cloning;
+        private CancellationTokenSource duplicatesCancellation;
         private IPlaylist selectedPlaylist;
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         public event PropertyChangedEventHandler PropertyChanged;
@@ -71,6 +71,7 @@ namespace PlaylistManager.UI
         public void Dispose()
         {
             disposed = true;
+            duplicatesCancellation?.Cancel();
             imageSelectionModalController.ImageSelectedEvent -= ImageSelectionModalController_ImageSelectedEvent;
 
             if (selectedPlaylist != null)
@@ -279,19 +280,46 @@ namespace PlaylistManager.UI
         [UIAction("duplicates-toggled")]
         private void DuplicatesToggled(bool playlistAllowDuplicates)
         {
+            if (disposed || selectedPlaylist == null) return;
             if (playlistAllowDuplicates)
             {
                 PlaylistAllowDuplicates = true;
             }
             else if (PlaylistAllowDuplicates != playlistAllowDuplicates)
             {
-                popupModalsController.ShowYesNoModal(modalTransform, "Are you sure you want to turn off duplicates for this playlist? This will also delete all duplicate songs from this playlist.", DeleteDuplicates, noButtonPressedCallback: DontDeleteDuplicates, animateParentCanvas: false);
+                var playlist = selectedPlaylist;
+                var manager = parentManager;
+                if (duplicatesCancellation != null) return;
+                popupModalsController.ShowYesNoModal(modalTransform, "Are you sure you want to turn off duplicates for this playlist? This will also delete all duplicate songs from this playlist.",
+                    () => DeleteDuplicates(playlist, manager), noButtonPressedCallback: () =>
+                    {
+                        if (!disposed && ReferenceEquals(selectedPlaylist, playlist) && ReferenceEquals(parentManager, manager)) PlaylistAllowDuplicates = true;
+                    }, animateParentCanvas: false);
             }
         }
 
-        private void DeleteDuplicates() => PlaylistAllowDuplicates = false;
-
-        private void DontDeleteDuplicates() => PlaylistAllowDuplicates = true;
+        private async void DeleteDuplicates(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            if (disposed || duplicatesCancellation != null || manager == null
+                || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(parentManager, manager)) return;
+            using var cancellation = new CancellationTokenSource();
+            duplicatesCancellation = cancellation;
+            try { await PlaylistLibUtils.DisableDuplicatesAsync(playlist, manager, cancellation.Token); }
+            catch (OperationCanceledException) { }
+            catch (Exception e)
+            {
+                Plugin.Log.Error(e);
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    popupModalsController.ShowOkModal(modalTransform, "Couldn't remove duplicate songs. Please try again.", null, animateParentCanvas: false);
+            }
+            finally
+            {
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (ReferenceEquals(duplicatesCancellation, cancellation)) duplicatesCancellation = null;
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistAllowDuplicates)));
+            }
+        }
 
         // Values
 
@@ -301,20 +329,14 @@ namespace PlaylistManager.UI
             get => selectedPlaylist == null ? false : selectedPlaylist.AllowDuplicates;
             set
             {
-                selectedPlaylist.AllowDuplicates = value;
-
+                if (disposed || selectedPlaylist == null) return;
                 if (!value)
                 {
-                    if (selectedPlaylist is BlistPlaylist blistPlaylist)
-                    {
-                        blistPlaylist.RemoveDuplicates();
-                    }
-                    else if (selectedPlaylist is LegacyPlaylist legacyPlaylist)
-                    {
-                        legacyPlaylist.RemoveDuplicates();
-                    }
+                    DeleteDuplicates(selectedPlaylist, parentManager);
+                    return;
                 }
-
+                duplicatesCancellation?.Cancel();
+                selectedPlaylist.AllowDuplicates = true;
                 selectedPlaylist.RaisePlaylistChanged();
                 PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistAllowDuplicates)));
@@ -373,6 +395,10 @@ namespace PlaylistManager.UI
 
         public void LevelCollectionUpdated(BeatmapLevelPack annotatedBeatmapLevelCollection, BeatSaberPlaylistsLib.PlaylistManager parentManager)
         {
+            if (disposed) return;
+            if (annotatedBeatmapLevelCollection is not PlaylistLevelPack current
+                || !ReferenceEquals(selectedPlaylist, current.playlist) || !ReferenceEquals(this.parentManager, parentManager))
+                duplicatesCancellation?.Cancel();
             if (selectedPlaylist != null)
             {
                 selectedPlaylist.SpriteLoaded -= SelectedPlaylist_SpriteLoaded;
