@@ -314,25 +314,33 @@ namespace PlaylistManager.UI
             catch (Exception e) { Plugin.Log.Error(e); }
         }
 
-        private void CreateFolder(string folderName)
+        private async void CreateFolder(string folderName)
         {
             folderName = folderName.Replace("/", "").Replace("\\", "").Replace(".", "");
-            if (!string.IsNullOrEmpty(folderName))
+            var manager = parentManager;
+            var catalog = PlaylistLibUtils.Catalog;
+            int request = showRequest;
+            if (string.IsNullOrEmpty(folderName) || disposed || manager == null || catalog == null) return;
+            var knownChildren = childManagers.ToArray();
+            try
             {
-                var childManager = parentManager.CreateChildManager(folderName);
-
-                if (childManagers.Contains(childManager))
+                var childManager = await PlaylistLibUtils.CreateChildManagerAsync(folderName, manager);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                await catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed || request != showRequest || !ReferenceEquals(parentManager, manager)
+                    || !modalTransform || !modalTransform.gameObject.activeInHierarchy) return;
+                if (knownChildren.Contains(childManager))
                 {
                     popupModalsController.ShowOkModal(modalTransform, "\"" + folderName + "\" already exists! Please use a different name.", null, animateParentCanvas: false);
                 }
                 else
                 {
-                    playlistTableData.Data.Insert(childManagers.Count, new CustomCellInfo(Path.GetFileName(childManager.PlaylistPath), "Folder", folderIcon));
-                    playlistTableData.TableView.ReloadDataKeepingPosition();
-                    childManagers.Add(childManager);
-                    PlaylistLibUtils.playlistManager.RequestRefresh("PlaylistManager (plugin)");
+                    ShowPlaylistsForManager(manager);
                 }
             }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         #endregion

@@ -106,6 +106,12 @@ namespace PlaylistManager.Utilities
             return manager.ClonePlaylistAsync(playlist);
         }
 
+        internal static Task<BeatSaberPlaylistsLib.PlaylistManager> CreateChildManagerAsync(string folderName, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            savingManagers.Add(manager);
+            return manager.CreateChildManagerAsync(folderName);
+        }
+
         public static IPlaylist CreatePlaylist(string playlistName, string playlistAuthorName, BeatSaberPlaylistsLib.PlaylistManager playlistManager, bool defaultCover = true,
             bool allowDups = true, bool easterEgg = false)
         {

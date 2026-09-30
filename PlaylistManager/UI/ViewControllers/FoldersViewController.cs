@@ -302,32 +302,32 @@ namespace PlaylistManager.UI
             popupModalsController.ShowKeyboard(levelSelectionNavigationController.transform, CreateKeyboardEnter);
         }
 
-        private void CreateKeyboardEnter(string folderName)
+        private async void CreateKeyboardEnter(string folderName)
         {
-            if (CurrentParentManager == null)
-            {
-                return;
-            }
-
             folderName = folderName.Replace("/", "").Replace("\\", "").Replace(".", "");
-            if (!string.IsNullOrEmpty(folderName))
+            var manager = CurrentParentManager;
+            var catalog = PlaylistLibUtils.Catalog;
+            if (string.IsNullOrEmpty(folderName) || disposed || manager == null || catalog == null) return;
+            var knownChildren = currentManagers.ToArray();
+            try
             {
-                var childManager = CurrentParentManager.CreateChildManager(folderName);
-
-                if (currentManagers.Contains(childManager))
+                var childManager = await PlaylistLibUtils.CreateChildManagerAsync(folderName, manager);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                await catalog.ScanAsync();
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed || !ReferenceEquals(CurrentParentManager, manager)
+                    || !rootTransform || !rootTransform.gameObject.activeInHierarchy) return;
+                if (knownChildren.Contains(childManager))
                 {
                     popupModalsController.ShowOkModal(levelSelectionNavigationController.transform, "\"" + folderName + "\" already exists! Please use a different name.", null);
                 }
                 else
                 {
-                    var customCellInfo = new CustomListTableData.CustomCellInfo(folderName, icon: BeatSaberMarkupLanguage.Utilities.ImageResources.BlankSprite);
-                    tableCells.Add(customCellInfo);
-                    customListTableData.TableView.ReloadData();
-                    customListTableData.TableView.ClearSelection();
-                    currentManagers.Add(childManager);
-                    _ = PlaylistLibUtils.Catalog.ScanAsync();
+                    SetupList(manager, false);
                 }
             }
+            catch (OperationCanceledException) { }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         #endregion
