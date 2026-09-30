@@ -1,6 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
+using IPA.Utilities;
 using BeatSaberPlaylistsLib;
 using BeatSaberPlaylistsLib.Types;
 using UnityEngine;
@@ -17,6 +20,7 @@ namespace PlaylistManager.Types
         public string Path { get; private set; }
         private Sprite _sprite;
         private bool SpriteLoadQueued;
+        private bool disposed;
 
         public bool SpriteWasLoaded { get; private set; }
         public bool Blacklist { get; private set; }
@@ -25,6 +29,7 @@ namespace PlaylistManager.Types
         private static readonly object _loaderLock = new();
         private static bool CoroutineRunning = false;
         private static readonly Queue<Action> SpriteQueue = new();
+        private static readonly SemaphoreSlim preparationSlots = new(2, 2);
 
         public CoverImage(string path)
         {
@@ -40,7 +45,7 @@ namespace PlaylistManager.Types
             {
                 if (_sprite == null)
                 {
-                    if (!SpriteLoadQueued)
+                    if (!disposed && !SpriteLoadQueued && !Blacklist)
                     {
                         SpriteLoadQueued = true;
                         QueueLoadSprite(this);
@@ -53,39 +58,66 @@ namespace PlaylistManager.Types
 
         public static YieldInstruction LoadWait = new WaitForEndOfFrame();
 
-        private static void QueueLoadSprite(CoverImage coverImage)
+        internal void Release()
         {
-            SpriteQueue.Enqueue(() =>
+            disposed = true;
+            SpriteLoaded = null;
+            if (_sprite && !ReferenceEquals(_sprite, BeatSaberPlaylistsLib.Utilities.DefaultSprite))
             {
-                try
+                var texture = _sprite.texture;
+                UnityEngine.Object.Destroy(_sprite);
+                if (texture) UnityEngine.Object.Destroy(texture);
+            }
+            _sprite = null;
+        }
+
+        private static async void QueueLoadSprite(CoverImage coverImage)
+        {
+            await UnityGame.SwitchToMainThreadAsync();
+            string path = coverImage.Path;
+            await preparationSlots.WaitAsync();
+            try
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                if (coverImage.disposed) return;
+                byte[] bytes = await Task.Run(() => File.ReadAllBytes(path));
+                await UnityGame.SwitchToMainThreadAsync();
+                if (coverImage.disposed) return;
+                var starter = SharedCoroutineStarter.instance;
+                if (starter == null) return;
+                var published = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+                SpriteQueue.Enqueue(() =>
                 {
-                    using (var imageStream = File.Open(coverImage.Path, FileMode.Open))
+                    try
                     {
-                        coverImage._sprite = BeatSaberPlaylistsLib.Utilities.GetSpriteFromStream(imageStream);
-                        if (coverImage._sprite != null)
-                        {
-                            coverImage.SpriteWasLoaded = true;
-                        }
-                        else
-                        {
-                            Plugin.Log.Critical("Could not load " + coverImage.Path);
-                            coverImage.SpriteWasLoaded = false;
-                            coverImage.Blacklist = true;
-                        }
+                        if (coverImage.disposed) return;
+                        coverImage._sprite = BeatSaberPlaylistsLib.Utilities.GetSpriteFromBytes(bytes);
+                        coverImage.SpriteWasLoaded = coverImage._sprite != null;
+                        coverImage.Blacklist = !coverImage.SpriteWasLoaded;
+                        if (coverImage.Blacklist) Plugin.Log.Critical("Could not load " + path);
                         coverImage.SpriteLoaded?.Invoke(coverImage, null);
                     }
-                }
-                catch (Exception e)
-                {
-                    Plugin.Log.Critical("Could not load " + coverImage.Path + "\nException message: " + e.Message);
-                    coverImage.SpriteWasLoaded = false;
-                    coverImage.Blacklist = true;
-                    coverImage.SpriteLoaded?.Invoke(coverImage, null);
-                }
-            });
-
-            if (!CoroutineRunning)
-                SharedCoroutineStarter.instance.StartCoroutine(SpriteLoadCoroutine());
+                    finally { published.TrySetResult(true); }
+                });
+                if (!CoroutineRunning) starter.StartCoroutine(SpriteLoadCoroutine());
+                await published.Task;
+            }
+            catch (Exception e)
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                Plugin.Log.Critical("Could not load " + path + "\nException message: " + e.Message);
+                if (coverImage.disposed) return;
+                coverImage.SpriteWasLoaded = false;
+                coverImage.Blacklist = true;
+                try { coverImage.SpriteLoaded?.Invoke(coverImage, null); }
+                catch (Exception callbackError) { Plugin.Log.Error(callbackError); }
+            }
+            finally
+            {
+                preparationSlots.Release();
+                await UnityGame.SwitchToMainThreadAsync();
+                coverImage.SpriteLoadQueued = false;
+            }
         }
 
         private static IEnumerator<YieldInstruction> SpriteLoadCoroutine()
@@ -100,7 +132,8 @@ namespace PlaylistManager.Types
             {
                 yield return LoadWait;
                 var loader = SpriteQueue.Dequeue();
-                loader?.Invoke();
+                try { loader?.Invoke(); }
+                catch (Exception e) { Plugin.Log.Error(e); }
             }
             CoroutineRunning = false;
             if (SpriteQueue.Count > 0)

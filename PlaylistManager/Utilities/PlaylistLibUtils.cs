@@ -125,9 +125,13 @@ namespace PlaylistManager.Utilities
         internal static async Task<Sprite> GeneratePlaylistIcon(IPlaylist playlist)
         {
             using var coverStream = await playlist.GetDefaultCoverStream();
+            await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
             if (coverStream != null)
             {
-                Sprite sprite = await BeatSaberMarkupLanguage.Utilities.LoadSpriteAsync(coverStream.ToArray());
+                var bytes = await Task.Run(() => coverStream.ToArray());
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                Sprite sprite = await BeatSaberMarkupLanguage.Utilities.LoadSpriteAsync(bytes);
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
                 return sprite ? sprite : BeatSaberPlaylistsLib.Utilities.DefaultSprite;
             }
             return BeatSaberPlaylistsLib.Utilities.DefaultSprite;

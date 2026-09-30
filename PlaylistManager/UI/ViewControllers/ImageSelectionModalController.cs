@@ -11,13 +11,14 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using IPA.Loader;
+using IPA.Utilities;
 using SiraUtil.Zenject;
 using UnityEngine;
 using static BeatSaberMarkupLanguage.Components.CustomListTableData;
 
 namespace PlaylistManager.UI
 {
-    public class ImageSelectionModalController : NotifiableBase
+    public class ImageSelectionModalController : NotifiableBase, IDisposable
     {
         private readonly LevelPackDetailViewController levelPackDetailViewController;
         private readonly PopupModalsController popupModalsController;
@@ -25,10 +26,15 @@ namespace PlaylistManager.UI
         private readonly BSMLParser bsmlParser;
 
         private readonly string IMAGES_PATH = Path.Combine(PlaylistLibUtils.playlistManager.PlaylistPath, "CoverImages");
-        private Sprite playlistManagerIcon;
+        private readonly Task<Sprite> playlistManagerIcon;
+        private readonly Task imageDirectoryReady;
         private readonly Dictionary<string, CoverImage> coverImages;
         private bool parsed;
         private int selectedIndex;
+        private int showRevision;
+        private int imageChangeRevision;
+        private Sprite generatedPlaylistIcon;
+        private BeatSaberPlaylistsLib.Types.IPlaylist shownPlaylist;
 
         public event Action<byte[]> ImageSelectedEvent;
 
@@ -53,23 +59,26 @@ namespace PlaylistManager.UI
             this.pluginMetadata = pluginMetadata.Value;
             this.bsmlParser = bsmlParser;
 
-            // Have to do this in case directory perms are not given
-            try
+            string directory = IMAGES_PATH;
+            imageDirectoryReady = Task.Run(() =>
             {
-                Directory.CreateDirectory(IMAGES_PATH);
-                var ignorePath = Path.Combine(IMAGES_PATH, ".plignore");
-                if (!File.Exists(ignorePath))
+                try
                 {
-                    using (File.Create(ignorePath)) { }
+                    Directory.CreateDirectory(directory);
+                    var ignorePath = Path.Combine(directory, ".plignore");
+                    if (!File.Exists(ignorePath))
+                    {
+                        using (File.Create(ignorePath)) { }
+                    }
                 }
-            }
-            catch (Exception e)
-            {
-                Plugin.Log.Error($"Could not make images path.\nExcepton:{e.Message}");
-            }
+                catch (Exception e)
+                {
+                    Plugin.Log.Error($"Could not make images path.\nExcepton:{e.Message}");
+                }
+            });
 
             coverImages = new Dictionary<string, CoverImage>();
-            BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync("PlaylistManager.Icons.DefaultIcon.png").ContinueWith(x => { playlistManagerIcon = x.Result; });
+            playlistManagerIcon = BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync("PlaylistManager.Icons.DefaultIcon.png");
             parsed = false;
         }
 
@@ -83,6 +92,16 @@ namespace PlaylistManager.UI
             modalTransform.position = modalPosition;
         }
 
+        public void Dispose()
+        {
+            showRevision++;
+            imageChangeRevision++;
+            foreach (var cover in coverImages.Values) cover.Release();
+            coverImages.Clear();
+            DestroyGeneratedIcon(generatedPlaylistIcon);
+            generatedPlaylistIcon = null;
+        }
+
         [UIAction("#post-parse")]
         private void PostParse()
         {
@@ -92,67 +111,107 @@ namespace PlaylistManager.UI
 
         internal void ShowModal(BeatSaberPlaylistsLib.Types.IPlaylist playlist)
         {
+            shownPlaylist = playlist;
             Parse();
             parserParams.EmitEvent("close-modal");
             parserParams.EmitEvent("open-modal");
             ShowImages(playlist);
         }
 
-        private void LoadImages()
+        private async Task<bool> LoadImages(int revision)
         {
-            foreach (var imageToDelete in coverImages.Where(coverImage => !File.Exists(coverImage.Key)).ToList())
+            string[] knownPaths = coverImages.Keys.ToArray();
+            string directory = IMAGES_PATH;
+            await imageDirectoryReady;
+            var files = await Task.Run(() =>
             {
-                coverImages.Remove(imageToDelete.Key);
+                string[] ext = { "jpg", "png" };
+                var imageFiles = Directory.EnumerateFiles(directory, "*.*", SearchOption.AllDirectories)
+                    .Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant())).ToArray();
+                return (Images: imageFiles, Removed: knownPaths.Where(path => !File.Exists(path)).ToArray());
+            });
+            await UnityGame.SwitchToMainThreadAsync();
+            if (revision != showRevision || !customListTableData) return false;
+            foreach (var path in files.Removed)
+            {
+                if (coverImages.TryGetValue(path, out var removed)) removed.Release();
+                coverImages.Remove(path);
             }
 
-            string[] ext = { "jpg", "png" };
-            var imageFiles = Directory.EnumerateFiles(IMAGES_PATH, "*.*", SearchOption.AllDirectories).Where(s => ext.Contains(Path.GetExtension(s).TrimStart('.').ToLowerInvariant()));
-
-            foreach (var file in imageFiles)
+            foreach (var file in files.Images)
             {
                 if (!coverImages.ContainsKey(file))
                 {
                     coverImages.Add(file, new CoverImage(file));
                 }
             }
+            return true;
         }
 
         private async void ShowImages(BeatSaberPlaylistsLib.Types.IPlaylist playlist)
         {
-            await IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(() => customListTableData.Data.Clear());
-
+            int revision = ++showRevision;
+            foreach (var coverImage in coverImages.Values) coverImage.SpriteLoaded -= CoverImage_SpriteLoaded;
+            customListTableData.Data.Clear();
             IsLoading = true;
-
-            // Add clear image
-            customListTableData.Data.Add(new CustomCellInfo("Clear Icon", "Clear", await PlaylistLibUtils.GeneratePlaylistIcon(playlist)));
-
-            // Add default image
-            customListTableData.Data.Add(new CustomCellInfo("PlaylistManager Icon", "Default", playlistManagerIcon));
-
-            LoadImages();
-            foreach (var coverImage in coverImages)
+            DestroyGeneratedIcon(generatedPlaylistIcon);
+            generatedPlaylistIcon = null;
+            Sprite generatedIcon = null;
+            try
             {
-                if(!coverImage.Value.SpriteWasLoaded && !coverImage.Value.Blacklist)
+                generatedIcon = await PlaylistLibUtils.GeneratePlaylistIcon(playlist);
+                var defaultIcon = await playlistManagerIcon;
+                if (!await LoadImages(revision)) return;
+                await UnityGame.SwitchToMainThreadAsync();
+                if (revision != showRevision || !customListTableData) return;
+                customListTableData.Data.Add(new CustomCellInfo("Clear Icon", "Clear", generatedIcon));
+                generatedPlaylistIcon = generatedIcon;
+                generatedIcon = null;
+                customListTableData.Data.Add(new CustomCellInfo("PlaylistManager Icon", "Default", defaultIcon));
+                foreach (var coverImage in coverImages)
                 {
-                    coverImage.Value.SpriteLoaded += CoverImage_SpriteLoaded;
-                    _ = coverImage.Value.Sprite;
+                    if (!coverImage.Value.SpriteWasLoaded && !coverImage.Value.Blacklist)
+                    {
+                        coverImage.Value.SpriteLoaded -= CoverImage_SpriteLoaded;
+                        coverImage.Value.SpriteLoaded += CoverImage_SpriteLoaded;
+                        _ = coverImage.Value.Sprite;
+                    }
+                    else if (coverImage.Value.SpriteWasLoaded)
+                    {
+                        customListTableData.Data.Add(new CustomCellInfo(Path.GetFileName(coverImage.Key), coverImage.Key, coverImage.Value.Sprite));
+                    }
                 }
-                else if(coverImage.Value.SpriteWasLoaded)
-                {
-                    customListTableData.Data.Add(new CustomCellInfo(Path.GetFileName(coverImage.Key), coverImage.Key, coverImage.Value.Sprite));
-                }
+                customListTableData.TableView.ReloadData();
+                customListTableData.TableView.ScrollToCellWithIdx(0, TableView.ScrollPositionType.Beginning, false);
+                _ = ViewControllerMonkeyCleanup();
             }
+            catch (Exception e)
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                if (revision == showRevision && customListTableData) IsLoading = false;
+                Plugin.Log.Error(e);
+            }
+            finally
+            {
+                await UnityGame.SwitchToMainThreadAsync();
+                DestroyGeneratedIcon(generatedIcon);
+            }
+        }
 
-            await IPA.Utilities.Async.UnityMainThreadTaskScheduler.Factory.StartNew(() => customListTableData.TableView.ReloadData());
-            customListTableData.TableView.ScrollToCellWithIdx(0, TableView.ScrollPositionType.Beginning, false);
-            _ = ViewControllerMonkeyCleanup();
+        private static void DestroyGeneratedIcon(Sprite sprite)
+        {
+            if (!sprite || ReferenceEquals(sprite, BeatSaberPlaylistsLib.Utilities.DefaultSprite)) return;
+            var texture = sprite.texture;
+            UnityEngine.Object.Destroy(sprite);
+            if (texture) UnityEngine.Object.Destroy(texture);
         }
 
         private void CoverImage_SpriteLoaded(object sender, EventArgs e)
         {
             if (sender is CoverImage coverImage)
             {
-                if (coverImage.SpriteWasLoaded)
+                if (customListTableData && customListTableData.TableView && coverImage.SpriteWasLoaded
+                    && coverImages.TryGetValue(coverImage.Path, out var current) && ReferenceEquals(current, coverImage))
                 {
                     customListTableData.Data.Add(new CustomCellInfo(Path.GetFileName(coverImage.Path), coverImage.Path, coverImage.Sprite));
                     customListTableData.TableView.ReloadDataKeepingPosition();
@@ -175,39 +234,39 @@ namespace PlaylistManager.UI
             popupModalsController.ShowYesNoModal(modalTransform, "Are you sure you want to change the image of the playlist? This cannot be reverted.", ChangeImage, animateParentCanvas: false);
         }
 
-        private void ChangeImage()
+        private async void ChangeImage()
         {
+            int revision = showRevision;
+            int change = ++imageChangeRevision;
+            var playlist = shownPlaylist;
+            var assembly = pluginMetadata.Assembly;
             if (selectedIndex == 0)
             {
                 ImageSelectedEvent?.Invoke(null);
                 parserParams.EmitEvent("close-modal");
             }
-            else if (selectedIndex == 1)
+            else
             {
-                using (var imageStream = pluginMetadata.Assembly.GetManifestResourceStream("PlaylistManager.Icons.DefaultIcon.png"))
+                var selectedImagePath = selectedIndex == 1 ? null : customListTableData.Data[selectedIndex].Subtext;
+                try
                 {
-                    var imageBytes = new byte[imageStream.Length];
-                    imageStream.Read(imageBytes, 0, (int)imageStream.Length);
+                    var imageBytes = await Task.Run(() => selectedImagePath == null
+                        ? BeatSaberPlaylistsLib.Utilities.GetResource(assembly, "PlaylistManager.Icons.DefaultIcon.png")
+                        : File.ReadAllBytes(selectedImagePath));
+                    await UnityGame.SwitchToMainThreadAsync();
+                    if (revision != showRevision || change != imageChangeRevision
+                        || levelPackDetailViewController._pack is not BeatSaberPlaylistsLib.Types.PlaylistLevelPack pack
+                        || !ReferenceEquals(pack.playlist, playlist)) return;
                     ImageSelectedEvent?.Invoke(imageBytes);
                     parserParams.EmitEvent("close-modal");
                 }
-            }
-            else
-            {
-                var selectedImagePath = customListTableData.Data[selectedIndex].Subtext;
-                try
-                {
-                    using (var imageStream = File.Open(selectedImagePath, FileMode.Open))
-                    {
-                        var imageBytes = new byte[imageStream.Length];
-                        imageStream.Read(imageBytes, 0, (int)imageStream.Length);
-                        ImageSelectedEvent?.Invoke(imageBytes);
-                        parserParams.EmitEvent("close-modal");
-                    }
-                }
                 catch (Exception e)
                 {
-                    popupModalsController.ShowOkModal(modalTransform, "There was an error loading this image. Check logs for more details.", null, animateParentCanvas: false);
+                    await UnityGame.SwitchToMainThreadAsync();
+                    if (revision == showRevision && change == imageChangeRevision && customListTableData)
+                    {
+                        popupModalsController.ShowOkModal(modalTransform, "There was an error loading this image. Check logs for more details.", null, animateParentCanvas: false);
+                    }
                     Plugin.Log.Critical("Could not load " + selectedImagePath + "\nException message: " + e.Message);
                 }
             }
@@ -215,7 +274,10 @@ namespace PlaylistManager.UI
 
         private async Task ViewControllerMonkeyCleanup()
         {
+            int revision = showRevision;
             await SiraUtil.Extras.Utilities.PauseChamp;
+            await UnityGame.SwitchToMainThreadAsync();
+            if (revision != showRevision || !customListTableData || !customListTableData.TableView) return;
             var imageViews = customListTableData.TableView.GetComponentsInChildren<ImageView>(true);
             for (var i = 0; i < imageViews.Length; i++)
             {
