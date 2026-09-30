@@ -305,11 +305,14 @@ namespace PlaylistManager.UI
             }
             catch (Exception e)
             {
-                if (e is not OperationCanceledException && !disposed && ReferenceEquals(selectedPlaylist, playlist))
+                if (e is not OperationCanceledException)
                 {
-                    popupModalsController.OkText = "Error: The selected playlist cannot be synced";
-                    popupModalsController.OkButtonText = "Ok";
                     Plugin.Log.Error(e);
+                    if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    {
+                        popupModalsController.OkText = "Error: The selected playlist cannot be synced";
+                        popupModalsController.OkButtonText = "Ok";
+                    }
                 }
                 return;
             }

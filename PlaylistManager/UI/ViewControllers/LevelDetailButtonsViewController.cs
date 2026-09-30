@@ -120,7 +120,7 @@ namespace PlaylistManager.UI
                 Plugin.Log.Critical(string.Format("An exception was thrown while adding a song to a playlist.\nException Message: {0}", e.Message));
             }
 
-            if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(selectedBeatmapLevel, playlistLevel)) return;
+            if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || selectedBeatmapLevel?.levelID != playlistLevel.levelID) return;
             levelCollectionTableView.ClearSelection();
 
             // The cutie list
