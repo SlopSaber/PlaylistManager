@@ -59,6 +59,7 @@ namespace PlaylistManager.Utilities
             try { await manager.WaitForPendingSavesAsync(includeChildren); }
             catch (Exception e) { Plugin.Log.Error(e); }
             await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+            await manager.WaitForFilePublicationAsync();
         }
 
         internal static void FlushPendingSaves()
