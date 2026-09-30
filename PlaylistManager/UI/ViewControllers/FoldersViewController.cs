@@ -384,9 +384,11 @@ namespace PlaylistManager.UI
             {
                 await PlaylistLibUtils.WaitForPendingSavesAsync(manager, true);
                 if (disposed || !ReferenceEquals(CurrentParentManager, manager)) return;
-                manager.Parent.DeleteChildManager(manager, true);
-                BackButtonClicked();
-                await PlaylistLibUtils.Catalog.ScanAsync();
+                var catalog = PlaylistLibUtils.Catalog;
+                await manager.Parent.DeleteChildManagerAsync(manager, true);
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                if (!disposed && ReferenceEquals(CurrentParentManager, manager)) BackButtonClicked();
+                await catalog.ScanAsync();
             }
             catch (Exception e) { Plugin.Log.Error(e); }
         }
