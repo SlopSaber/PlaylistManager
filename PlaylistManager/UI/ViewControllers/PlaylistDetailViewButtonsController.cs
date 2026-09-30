@@ -40,6 +40,7 @@ namespace PlaylistManager.UI
         private List<IPlaylistSong> _missingSongs;
         private DownloadQueueEntry _downloadQueueEntry;
         private bool disposed;
+        private bool deleting;
         private CancellationTokenSource syncCancellation;
 
         public event Action<IReadOnlyList<BeatmapLevelPack>, int> LevelCollectionTableViewUpdatedEvent;
@@ -115,31 +116,36 @@ namespace PlaylistManager.UI
         [UIAction("delete-click")]
         private void OnDelete()
         {
-            // var numberOfSongs = selectedPlaylist.PlaylistLevelPack.AllBeatmapLevels().Count;
-            // var checkboxText = numberOfSongs > 0 ? $"Also delete all {numberOfSongs} songs from the game." : "";
-            popupModalsController.ShowYesNoModal(rootTransform, $"Are you sure you would like to delete the playlist \"{selectedPlaylist.Title}\"?", DeleteButtonPressed/* , checkboxText: checkboxText */);
-        }
-
-        private async void DeleteButtonPressed()
-        {
             var playlist = selectedPlaylist;
             var manager = parentManager;
+            if (disposed || deleting || playlist == null || manager == null) return;
+            popupModalsController.ShowYesNoModal(rootTransform, $"Are you sure you would like to delete the playlist \"{playlist.Title}\"?", () => DeleteButtonPressed(playlist, manager));
+        }
+
+        private async void DeleteButtonPressed(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            var catalog = PlaylistLibUtils.Catalog;
+            if (disposed || deleting || catalog == null || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(parentManager, manager)) return;
+            deleting = true;
+            bool removed = false;
             try
             {
-                // if (popupModalsController.CheckboxValue)
-                // {
-                //     DeleteSongs();
-                // }
-                await PlaylistLibUtils.WaitForPendingSavesAsync(manager);
-                if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(parentManager, manager)) return;
-                DeletePlaylist();
+                await PlaylistLibUtils.DeletePlaylistAsync(playlist, manager);
+                removed = true;
+                if (!ReferenceEquals(catalog, PlaylistLibUtils.Catalog)) return;
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist) && ReferenceEquals(parentManager, manager))
+                    RemoveDeletedPlaylistFromView(playlist);
+                await catalog.ScanAsync();
             }
+            catch (OperationCanceledException) { }
             catch (Exception e)
             {
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
                 if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
-                    popupModalsController.ShowOkModal(rootTransform, "Error: Playlist cannot be deleted.", null);
+                    popupModalsController.ShowOkModal(rootTransform, removed ? "Playlist deleted. Refresh the list." : "Error: Playlist cannot be deleted.", null);
                 Plugin.Log.Critical(string.Format("An exception was thrown while deleting a playlist.\nException message:{0}", e));
             }
+            finally { deleting = false; }
         }
 
         // private async void DeleteSongs()
@@ -156,14 +162,14 @@ namespace PlaylistManager.UI
         //     popupModalsController.DismissLoadingModal();
         // }
 
-        private void DeletePlaylist()
+        private void RemoveDeletedPlaylistFromView(IPlaylist playlist)
         {
-            parentManager.DeletePlaylist(selectedPlaylist, true);
-            var selectedIndex = annotatedBeatmapLevelCollectionsViewController.selectedItemIndex;
             var annotatedBeatmapLevelCollections = annotatedBeatmapLevelCollectionsViewController._annotatedBeatmapLevelCollections.ToList();
-            annotatedBeatmapLevelCollections.RemoveAt(selectedIndex);
-            selectedIndex--;
-            LevelCollectionTableViewUpdatedEvent?.Invoke(annotatedBeatmapLevelCollections.ToArray(), selectedIndex < 0 ? 0 : selectedIndex);
+            int index = annotatedBeatmapLevelCollections.FindIndex(pack => pack is PlaylistLevelPack current && ReferenceEquals(current.playlist, playlist));
+            if (index < 0) return;
+            annotatedBeatmapLevelCollections.RemoveAll(pack => pack is PlaylistLevelPack current && ReferenceEquals(current.playlist, playlist));
+            int next = Math.Max(0, Math.Min(index - 1, annotatedBeatmapLevelCollections.Count - 1));
+            LevelCollectionTableViewUpdatedEvent?.Invoke(annotatedBeatmapLevelCollections.ToArray(), next);
         }
 
         #endregion

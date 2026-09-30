@@ -119,6 +119,12 @@ namespace PlaylistManager.Utilities
             return manager.RenameManagerAsync(folderName);
         }
 
+        internal static Task DeletePlaylistAsync(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            savingManagers.Add(manager);
+            return manager.DeletePlaylistAsync(playlist, true);
+        }
+
         public static IPlaylist CreatePlaylist(string playlistName, string playlistAuthorName, BeatSaberPlaylistsLib.PlaylistManager playlistManager, bool defaultCover = true,
             bool allowDups = true, bool easterEgg = false)
         {
