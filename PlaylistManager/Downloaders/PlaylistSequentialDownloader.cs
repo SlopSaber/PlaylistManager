@@ -24,7 +24,9 @@ namespace PlaylistManager.Downloaders
     internal class PlaylistSequentialDownloader : IInitializable, IDisposable
     {
         private readonly IHttpService siraHttpService;
-        private readonly BeatSaver beatSaverInstance;
+        private readonly BeatSaverSharp.Http.UnityWebRequestService beatSaverHttpService;
+        private readonly Dictionary<string, Beatmap> beatmapsByKey = new(StringComparer.Ordinal);
+        private readonly Dictionary<string, string> beatmapKeysByHash = new(StringComparer.OrdinalIgnoreCase);
         private readonly SemaphoreSlim downloadSemaphore;
         private static readonly HashSet<string> ownedHashes = new(StringComparer.OrdinalIgnoreCase);
         private DownloadQueueEntry currentDownload;
@@ -57,7 +59,12 @@ namespace PlaylistManager.Downloaders
         {
             this.siraHttpService = siraHttpService;
             var options = new BeatSaverOptions(metadata.Value.Name, metadata.Value.HVersion.ToString());
-            beatSaverInstance = new BeatSaver(options);
+            beatSaverHttpService = new BeatSaverSharp.Http.UnityWebRequestService
+            {
+                BaseURL = options.BeatSaverAPI.ToString(),
+                Timeout = options.Timeout,
+                UserAgent = $"{options.ApplicationName}/{options.Version}"
+            };
             downloadSemaphore = new SemaphoreSlim(1, 1);
             pauseSemaphore = new SemaphoreSlim(0, 1);
             popupSemaphore = new SemaphoreSlim(0, 1);
@@ -83,6 +90,8 @@ namespace PlaylistManager.Downloaders
         {
             disposed = true;
             lifetimeCancellation.Cancel();
+            beatmapsByKey.Clear();
+            beatmapKeysByHash.Clear();
             if (currentDownload != null && !currentDownload.cancellationTokenSource.IsCancellationRequested)
             {
                 currentDownload.cancellationTokenSource.Cancel();
@@ -316,14 +325,49 @@ namespace PlaylistManager.Downloaders
 
         #region Map Download
 
+        private async Task<Beatmap> GetBeatmapAsync(string identifier, bool byHash, CancellationToken token)
+        {
+            await UnityGame.SwitchToMainThreadAsync();
+            using var cancellation = CancellationTokenSource.CreateLinkedTokenSource(token, lifetimeCancellation.Token);
+            cancellation.Token.ThrowIfCancellationRequested();
+            string key = byHash ? null : identifier.ToLowerInvariant();
+            if (byHash)
+            {
+                if (string.IsNullOrWhiteSpace(identifier)) return null;
+                if (beatmapKeysByHash.TryGetValue(identifier, out var cachedKey) && beatmapsByKey.TryGetValue(cachedKey, out var cachedByHash)) return cachedByHash;
+            }
+            else if (beatmapsByKey.TryGetValue(key, out var cachedByKey)) return cachedByKey;
+
+            string path = byHash ? "maps/hash/" + identifier : "maps/id/" + key;
+            var response = await beatSaverHttpService.GetAsync(path, cancellation.Token);
+            await UnityGame.SwitchToMainThreadAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (!response.Successful) return null;
+            // This service captures owned bytes before disposing its native request.
+            var beatmap = await Task.Run(() => response.ReadAsObjectAsync<Beatmap>(), cancellation.Token);
+            await UnityGame.SwitchToMainThreadAsync();
+            cancellation.Token.ThrowIfCancellationRequested();
+            if (beatmap == null) return null;
+            beatmapsByKey[beatmap.ID] = beatmap;
+            foreach (var version in beatmap.Versions) beatmapKeysByHash[version.Hash] = beatmap.ID;
+            if (byHash) beatmapKeysByHash[identifier] = beatmap.ID;
+            return beatmap;
+        }
+
         private async Task BeatSaverBeatmapDownload(Beatmap song, BeatmapVersion songversion, CancellationToken token, IProgress<double> progress = null)
         {
             await UnityGame.SwitchToMainThreadAsync();
+            token.ThrowIfCancellationRequested();
             var customSongsPath = CustomLevelPathHelper.customLevelsDirectoryPath;
             string hash = songversion.Hash;
             if (!ownedHashes.Contains(hash))
             {
-                var zip = await songversion.DownloadZIP(token, progress).ConfigureAwait(false);
+                // Decoded metadata stays private; its versions have no attached BeatSaver client.
+                var response = await beatSaverHttpService.GetAsync(songversion.DownloadURL, token, progress);
+                await UnityGame.SwitchToMainThreadAsync();
+                token.ThrowIfCancellationRequested();
+                if (!response.Successful) throw new IOException("BeatSaver map archive download failed.");
+                var zip = await response.ReadAsByteArrayAsync();
                 bool extracted = await ExtractZipAsync(zip, customSongsPath, FolderNameForBeatsaverMap(song), token).ConfigureAwait(false);
                 await UnityGame.SwitchToMainThreadAsync();
                 if (extracted) ownedHashes.Add(hash);
@@ -337,7 +381,7 @@ namespace PlaylistManager.Downloaders
             {
                 try
                 {
-                    var song = await beatSaverInstance.Beatmap(key, token);
+                    var song = await GetBeatmapAsync(key, false, token);
                     await UnityGame.SwitchToMainThreadAsync();
                     if (song == null)
                     {
@@ -369,7 +413,8 @@ namespace PlaylistManager.Downloaders
             {
                 try
                 {
-                    var song = await beatSaverInstance.BeatmapByHash(hash, token);
+                    var song = await GetBeatmapAsync(hash, true, token);
+                    await UnityGame.SwitchToMainThreadAsync();
                     if (song == null)
                     {
                         Plugin.Log.Error($"Failed to download Song {hash}. Unable to find a beatmap for that hash.");
