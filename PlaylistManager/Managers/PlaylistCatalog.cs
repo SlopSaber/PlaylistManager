@@ -82,9 +82,14 @@ namespace PlaylistManager.Managers
                     var result = await Manager.GetAllPlaylistsAsync(true, lifetime.Token);
                     await UnityGame.SwitchToMainThreadAsync();
                     if (disposed) return;
-                    current = result;
                     if (result.Exception != null)
                         foreach (var error in result.Exception.InnerExceptions) Plugin.Log.Error(error);
+                    if (!ContainsCurrentManagers(Manager, result))
+                    {
+                        requested = true;
+                        continue;
+                    }
+                    current = result;
                     foreach (var manager in new List<BeatSaberPlaylistsLib.PlaylistManager>(subscriptions))
                     {
                         if (!result.PlaylistsByManager.ContainsKey(manager))
@@ -94,11 +99,6 @@ namespace PlaylistManager.Managers
                         }
                     }
                     foreach (var manager in result.PlaylistsByManager.Keys) Subscribe(manager);
-                    if (!ContainsCurrentManagers(Manager))
-                    {
-                        requested = true;
-                        continue;
-                    }
                     ready.TrySetResult(null);
                     if (Changed != null)
                         foreach (Action callback in Changed.GetInvocationList())
@@ -117,11 +117,11 @@ namespace PlaylistManager.Managers
             }
         }
 
-        private bool ContainsCurrentManagers(BeatSaberPlaylistsLib.PlaylistManager manager)
+        private bool ContainsCurrentManagers(BeatSaberPlaylistsLib.PlaylistManager manager, BeatSaberPlaylistsLib.PlaylistManager.ScanResult result)
         {
-            if (!current.PlaylistsByManager.ContainsKey(manager)) return false;
+            if (!result.PlaylistsByManager.ContainsKey(manager)) return false;
             foreach (var child in manager.GetChildManagers())
-                if (!ContainsCurrentManagers(child)) return false;
+                if (!ContainsCurrentManagers(child, result)) return false;
             return true;
         }
 
