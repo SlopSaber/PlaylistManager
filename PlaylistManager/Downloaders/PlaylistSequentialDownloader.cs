@@ -265,7 +265,8 @@ namespace PlaylistManager.Downloaders
                 }
 
                 downloadQueueEntry.playlist.RaisePlaylistChanged();
-                downloadQueueEntry.parentManager.StorePlaylist(downloadQueueEntry.playlist);
+                await PlaylistLibUtils.StorePlaylistAsync(downloadQueueEntry.playlist, downloadQueueEntry.parentManager);
+                await UnityGame.SwitchToMainThreadAsync();
 
                 if (downloadQueueEntry.playlist is BeatSaberPlaylistsLib.Types.Playlist playlist)
                 {

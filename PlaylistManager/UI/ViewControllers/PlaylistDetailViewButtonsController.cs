@@ -39,6 +39,8 @@ namespace PlaylistManager.UI
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         private List<IPlaylistSong> _missingSongs;
         private DownloadQueueEntry _downloadQueueEntry;
+        private bool disposed;
+        private CancellationTokenSource syncCancellation;
 
         public event Action<IReadOnlyList<BeatmapLevelPack>, int> LevelCollectionTableViewUpdatedEvent;
         public event PropertyChangedEventHandler PropertyChanged;
@@ -92,6 +94,8 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
+            syncCancellation?.Cancel();
             levelPackDetailViewController.didActivateEvent -= PackViewActivated;
             playlistDownloader.QueueUpdatedEvent -= OnQueueUpdated;
         }
@@ -116,19 +120,24 @@ namespace PlaylistManager.UI
             popupModalsController.ShowYesNoModal(rootTransform, $"Are you sure you would like to delete the playlist \"{selectedPlaylist.Title}\"?", DeleteButtonPressed/* , checkboxText: checkboxText */);
         }
 
-        private void DeleteButtonPressed()
+        private async void DeleteButtonPressed()
         {
+            var playlist = selectedPlaylist;
+            var manager = parentManager;
             try
             {
                 // if (popupModalsController.CheckboxValue)
                 // {
                 //     DeleteSongs();
                 // }
+                await PlaylistLibUtils.WaitForPendingSavesAsync(manager);
+                if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(parentManager, manager)) return;
                 DeletePlaylist();
             }
             catch (Exception e)
             {
-                popupModalsController.ShowOkModal(rootTransform, "Error: Playlist cannot be deleted.", null);
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    popupModalsController.ShowOkModal(rootTransform, "Error: Playlist cannot be deleted.", null);
                 Plugin.Log.Critical(string.Format("An exception was thrown while deleting a playlist.\nException message:{0}", e));
             }
         }
@@ -251,26 +260,41 @@ namespace PlaylistManager.UI
         [UIAction("sync-click")]
         private async Task SyncPlaylistAsync()
         {
-            if (!selectedPlaylist.TryGetCustomData("syncURL", out var outSyncURL))
+            if (disposed || syncCancellation != null || selectedPlaylist == null) return;
+            var playlist = selectedPlaylist;
+            var manager = parentManager;
+            if (!playlist.TryGetCustomData("syncURL", out var outSyncURL))
             {
                 popupModalsController.ShowOkModal(rootTransform, "Error: The selected playlist cannot be synced", null);
                 return;
             }
 
             var syncURL = (string)outSyncURL;
-            var tokenSource = new CancellationTokenSource();
+            using var tokenSource = new CancellationTokenSource();
+            syncCancellation = tokenSource;
+            bool synced = false;
 
-            popupModalsController.ShowOkModal(rootTransform, "Syncing Playlist", () => tokenSource.Cancel(), "Cancel");
+            popupModalsController.ShowOkModal(rootTransform, "Syncing Playlist", () =>
+            {
+                if (ReferenceEquals(syncCancellation, tokenSource)) tokenSource.Cancel();
+            }, "Cancel");
 
             try
             {
                 var httpResponse = await siraHttpService.GetAsync(syncURL, cancellationToken: tokenSource.Token);
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (disposed || tokenSource.IsCancellationRequested || !ReferenceEquals(selectedPlaylist, playlist)) return;
                 if (httpResponse.Successful)
                 {
-                    selectedPlaylist.Clear(); // Clear all songs
-                    PlaylistLibUtils.playlistManager.DefaultHandler.Populate(await httpResponse.ReadAsStreamAsync(), selectedPlaylist);
-                    selectedPlaylist.RaisePlaylistChanged();
-                    parentManager.StorePlaylist(selectedPlaylist);
+                    using var stream = await httpResponse.ReadAsStreamAsync();
+                    await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                    if (disposed || tokenSource.IsCancellationRequested || !ReferenceEquals(selectedPlaylist, playlist)) return;
+                    playlist.Clear(); // Clear all songs
+                    PlaylistLibUtils.playlistManager.DefaultHandler.Populate(stream, playlist);
+                    if (!playlist.TryGetCustomData("syncURL", out outSyncURL)) playlist.SetCustomData("syncURL", syncURL);
+                    playlist.RaisePlaylistChanged();
+                    await PlaylistLibUtils.StorePlaylistAsync(playlist, manager);
+                    synced = true;
                 }
                 else
                 {
@@ -281,21 +305,24 @@ namespace PlaylistManager.UI
             }
             catch (Exception e)
             {
-                if (!(e is TaskCanceledException))
+                if (e is not OperationCanceledException && !disposed && ReferenceEquals(selectedPlaylist, playlist))
                 {
                     popupModalsController.OkText = "Error: The selected playlist cannot be synced";
                     popupModalsController.OkButtonText = "Ok";
+                    Plugin.Log.Error(e);
                 }
                 return;
             }
             finally
             {
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                syncCancellation = null;
                 // If the downloaded playlist doesn't have the sync url, add it back
-                if (!selectedPlaylist.TryGetCustomData("syncURL", out outSyncURL))
+                if (!playlist.TryGetCustomData("syncURL", out outSyncURL))
                 {
-                    selectedPlaylist.SetCustomData("syncURL", syncURL);
+                    playlist.SetCustomData("syncURL", syncURL);
                 }
-                switch (PluginConfig.Instance.SyncOption)
+                if (synced && !disposed && !tokenSource.IsCancellationRequested && ReferenceEquals(selectedPlaylist, playlist)) switch (PluginConfig.Instance.SyncOption)
                 {
                     case PluginConfig.SyncOptions.On:
                         DownloadAccepted();
@@ -331,6 +358,8 @@ namespace PlaylistManager.UI
 
         public void LevelCollectionUpdated(BeatmapLevelPack selectedBeatmapLevelCollection, BeatSaberPlaylistsLib.PlaylistManager parentManager)
         {
+            if (selectedBeatmapLevelCollection is not PlaylistLevelPack currentPack || !ReferenceEquals(selectedPlaylist, currentPack.playlist))
+                syncCancellation?.Cancel();
             if (selectedBeatmapLevelCollection is PlaylistLevelPack playlistLevelPack)
             {
                 selectedPlaylist = playlistLevelPack.playlist;

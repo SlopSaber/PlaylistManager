@@ -47,6 +47,7 @@ namespace PlaylistManager.UI
         private BeatSaberPlaylistsLib.PlaylistManager _currentParentManager;
         private List<BeatSaberPlaylistsLib.PlaylistManager> currentManagers;
         private FolderMode folderMode;
+        private bool disposed;
 
         public BeatSaberPlaylistsLib.PlaylistManager CurrentParentManager
         {
@@ -114,6 +115,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             LevelFilteringNavigationController_ShowPacksInChildController.AllPacksViewSelectedEvent -= LevelFilteringNavigationController_ShowPacksInChildController_AllPacksViewSelectedEvent;
         }
 
@@ -337,9 +339,10 @@ namespace PlaylistManager.UI
             popupModalsController.ShowKeyboard(levelSelectionNavigationController.transform, RenameKeyboardEnter, keyboardText: Path.GetFileName(CurrentParentManager.PlaylistPath));
         }
 
-        private void RenameKeyboardEnter(string folderName)
+        private async void RenameKeyboardEnter(string folderName)
         {
-            if (CurrentParentManager?.Parent == null)
+            var manager = CurrentParentManager;
+            if (manager?.Parent == null)
             {
                 return;
             }
@@ -347,10 +350,16 @@ namespace PlaylistManager.UI
             folderName = folderName.Replace("/", "").Replace("\\", "").Replace(".", "");
             if (!string.IsNullOrEmpty(folderName))
             {
-                if (folderName != Path.GetFileName(CurrentParentManager.PlaylistPath))
+                if (folderName != Path.GetFileName(manager.PlaylistPath))
                 {
-                    CurrentParentManager.RenameManager(folderName);
-                    PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FolderText)));
+                    try
+                    {
+                        await PlaylistLibUtils.WaitForPendingSavesAsync(manager, true);
+                        if (disposed || !ReferenceEquals(CurrentParentManager, manager)) return;
+                        manager.RenameManager(folderName);
+                        PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(FolderText)));
+                    }
+                    catch (Exception e) { Plugin.Log.Error(e); }
                 }
             }
         }
@@ -365,10 +374,18 @@ namespace PlaylistManager.UI
             popupModalsController.ShowYesNoModal(levelSelectionNavigationController.transform, string.Format("Are you sure you want to delete {0} along with all playlists and subfolders?", Path.GetFileName(CurrentParentManager.PlaylistPath)), DeleteConfirm);
         }
 
-        private void DeleteConfirm()
+        private async void DeleteConfirm()
         {
-            CurrentParentManager?.Parent?.DeleteChildManager(CurrentParentManager, true);
-            BackButtonClicked();
+            var manager = CurrentParentManager;
+            if (manager?.Parent == null) return;
+            try
+            {
+                await PlaylistLibUtils.WaitForPendingSavesAsync(manager, true);
+                if (disposed || !ReferenceEquals(CurrentParentManager, manager)) return;
+                manager.Parent.DeleteChildManager(manager, true);
+                BackButtonClicked();
+            }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         #endregion

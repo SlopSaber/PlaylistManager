@@ -18,6 +18,36 @@ namespace PlaylistManager.Utilities
     {
         private const string ICON_PATH = "PlaylistManager.Icons.DefaultIcon.png";
         private const string EASTER_EGG_URL = "https://raw.githubusercontent.com/rithik-b/PlaylistManager/master/img/easteregg.bplist";
+        private static readonly HashSet<BeatSaberPlaylistsLib.PlaylistManager> savingManagers = new();
+
+        internal static Task StorePlaylistAsync(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            savingManagers.Add(manager);
+            return manager.StorePlaylistAsync(playlist);
+        }
+
+        internal static async void StorePlaylist(IPlaylist playlist, BeatSaberPlaylistsLib.PlaylistManager manager)
+        {
+            try { await StorePlaylistAsync(playlist, manager); }
+            catch (Exception e) { Plugin.Log.Error(e); }
+        }
+
+        internal static async Task WaitForPendingSavesAsync(BeatSaberPlaylistsLib.PlaylistManager manager, bool includeChildren = false)
+        {
+            try { await manager.WaitForPendingSavesAsync(includeChildren); }
+            catch (Exception e) { Plugin.Log.Error(e); }
+            await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+        }
+
+        internal static void FlushPendingSaves()
+        {
+            foreach (var manager in savingManagers)
+            {
+                try { manager.WaitForPendingSavesAsync().GetAwaiter().GetResult(); }
+                catch (Exception e) { Plugin.Log.Error(e); }
+            }
+            savingManagers.Clear();
+        }
 
         public static BeatSaberPlaylistsLib.PlaylistManager playlistManager
         {

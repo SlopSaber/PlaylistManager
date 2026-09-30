@@ -27,6 +27,7 @@ namespace PlaylistManager.UI
         private readonly BSMLParser bsmlParser;
 
         private bool parsed;
+        private bool disposed;
         private IPlaylist selectedPlaylist;
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         public event PropertyChangedEventHandler PropertyChanged;
@@ -68,6 +69,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             imageSelectionModalController.ImageSelectedEvent -= ImageSelectionModalController_ImageSelectedEvent;
 
             if (selectedPlaylist != null)
@@ -150,7 +152,7 @@ namespace PlaylistManager.UI
                     selectedPlaylist.RaiseCoverImageChangedForDefaultCover();
                 }
                 selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist((IPlaylist)selectedPlaylist);
+                PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
                 Events.RaisePlaylistRenamed((IPlaylist)selectedPlaylist, parentManager);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistName)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(NameHint)));
@@ -171,7 +173,7 @@ namespace PlaylistManager.UI
             {
                 selectedPlaylist.Author = value;
                 selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist((IPlaylist)selectedPlaylist);
+                PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistAuthor)));
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(AuthorHint)));
             }
@@ -245,7 +247,7 @@ namespace PlaylistManager.UI
             {
                 selectedPlaylist.ReadOnly = value;
                 selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist((IPlaylist)selectedPlaylist);
+                PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
                 UpdateReadOnly();
             }
         }
@@ -302,7 +304,7 @@ namespace PlaylistManager.UI
                 }
 
                 selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist((IPlaylist)selectedPlaylist);
+                PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
                 PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(PlaylistAllowDuplicates)));
             }
 
@@ -321,19 +323,22 @@ namespace PlaylistManager.UI
             }
         }
 
-        private void ImageSelectionModalController_ImageSelectedEvent(byte[] imageBytes)
+        private async void ImageSelectionModalController_ImageSelectedEvent(byte[] imageBytes)
         {
-            selectedPlaylist.SpriteLoaded += SelectedPlaylist_SpriteLoaded;
+            var playlist = selectedPlaylist;
+            var manager = parentManager;
+            playlist.SpriteLoaded += SelectedPlaylist_SpriteLoaded;
             try
             {
-                selectedPlaylist.SetCover(imageBytes);
-                _ = selectedPlaylist.Sprite;
-                selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist((IPlaylist)selectedPlaylist);
+                playlist.SetCover(imageBytes);
+                _ = playlist.Sprite;
+                playlist.RaisePlaylistChanged();
+                await PlaylistLibUtils.StorePlaylistAsync(playlist, manager);
             }
             catch (Exception e)
             {
-                popupModalsController.ShowOkModal(modalTransform, "There was an error loading this image. Check logs for more details.", null, animateParentCanvas: false);
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    popupModalsController.ShowOkModal(modalTransform, "There was an error loading this image. Check logs for more details.", null, animateParentCanvas: false);
                 Plugin.Log.Critical(e.Message);
             }
         }

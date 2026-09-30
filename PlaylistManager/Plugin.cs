@@ -59,6 +59,7 @@ namespace PlaylistManager
         [OnDisable]
         public void OnDisable()
         {
+            Utilities.PlaylistLibUtils.FlushPendingSaves();
             _harmony.UnpatchSelf();
         }
     }

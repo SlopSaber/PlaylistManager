@@ -31,6 +31,7 @@ namespace PlaylistManager.UI
         private bool _addActive;
         private bool _isPlaylistSong;
         private bool selectedDifficultyHighlighted;
+        private bool disposed;
 
         [UIComponent("root")]
         private RectTransform rootTransform { get; set; }
@@ -58,6 +59,7 @@ namespace PlaylistManager.UI
 
         public void Dispose()
         {
+            disposed = true;
             difficultyHighlighter.selectedDifficultyChanged -= DifficultyHighlighter_selectedDifficultyChanged;
         }
 
@@ -97,24 +99,28 @@ namespace PlaylistManager.UI
             }
         }
 
-        private void RemoveSong()
+        private async void RemoveSong()
         {
             var playlistLevel = (PlaylistLevel)selectedBeatmapLevel;
+            var playlist = selectedPlaylist;
+            var manager = parentManager;
 
-            selectedPlaylist.Remove(playlistLevel.playlistSong);
+            playlist.Remove(playlistLevel.playlistSong);
 
             try
             {
-                selectedPlaylist.RaisePlaylistChanged();
-                parentManager.StorePlaylist(selectedPlaylist);
-                Events.RaisePlaylistSongRemoved(playlistLevel.playlistSong, selectedPlaylist);
+                playlist.RaisePlaylistChanged();
+                await PlaylistLibUtils.StorePlaylistAsync(playlist, manager);
+                Events.RaisePlaylistSongRemoved(playlistLevel.playlistSong, playlist);
             }
             catch (Exception e)
             {
-                popupModalsController.ShowOkModal(standardLevelDetailViewController.transform, "An error occured while removing a song from the playlist.", null);
+                if (!disposed && ReferenceEquals(selectedPlaylist, playlist))
+                    popupModalsController.ShowOkModal(standardLevelDetailViewController.transform, "An error occured while removing a song from the playlist.", null);
                 Plugin.Log.Critical(string.Format("An exception was thrown while adding a song to a playlist.\nException Message: {0}", e.Message));
             }
 
+            if (disposed || !ReferenceEquals(selectedPlaylist, playlist) || !ReferenceEquals(selectedBeatmapLevel, playlistLevel)) return;
             levelCollectionTableView.ClearSelection();
 
             // The cutie list
@@ -144,7 +150,7 @@ namespace PlaylistManager.UI
         {
             difficultyHighlighter.ToggleSelectedDifficultyHighlight();
             selectedPlaylist.RaisePlaylistChanged();
-            parentManager.StorePlaylist(selectedPlaylist);
+            PlaylistLibUtils.StorePlaylist(selectedPlaylist, parentManager);
             selectedDifficultyHighlighted = !selectedDifficultyHighlighted;
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HighlightButtonText)));
             PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(nameof(HighlightButtonHover)));

@@ -18,7 +18,7 @@ using SiraUtil.Zenject;
 
 namespace PlaylistManager.UI
 {
-    public class AddPlaylistModalController : INotifyPropertyChanged
+    public class AddPlaylistModalController : INotifyPropertyChanged, IDisposable
     {
         private readonly StandardLevelDetailViewController standardLevelDetailViewController;
         private readonly PopupModalsController popupModalsController;
@@ -28,9 +28,11 @@ namespace PlaylistManager.UI
         private BeatSaberPlaylistsLib.PlaylistManager parentManager;
         private List<BeatSaberPlaylistsLib.PlaylistManager> childManagers;
         private List<IPlaylist> childPlaylists;
+        private readonly HashSet<IPlaylist> coverSubscriptions = new();
 
         private Sprite folderIcon;
         private bool parsed;
+        private bool disposed;
         public event PropertyChangedEventHandler PropertyChanged;
 
         [UIComponent("list")]
@@ -64,8 +66,26 @@ namespace PlaylistManager.UI
             this.popupModalsController = popupModalsController;
             this.pluginMetadata = pluginMetadata.Value;
             this.bsmlParser = bsmlParser;
-            BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync("PlaylistManager.Icons.FolderIcon.png").ContinueWith(x => { folderIcon = x.Result; });
+            _ = LoadFolderIconAsync();
             parsed = false;
+        }
+
+        public void Dispose()
+        {
+            disposed = true;
+            foreach (var playlist in coverSubscriptions) playlist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
+            coverSubscriptions.Clear();
+        }
+
+        private async System.Threading.Tasks.Task LoadFolderIconAsync()
+        {
+            try
+            {
+                var sprite = await BeatSaberMarkupLanguage.Utilities.LoadSpriteFromAssemblyAsync("PlaylistManager.Icons.FolderIcon.png");
+                await IPA.Utilities.UnityGame.SwitchToMainThreadAsync();
+                if (!disposed) folderIcon = sprite;
+            }
+            catch (Exception e) { Plugin.Log.Error(e); }
         }
 
         private void Parse()
@@ -121,6 +141,7 @@ namespace PlaylistManager.UI
                 {
                     playlist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
                     playlist.SpriteLoaded += StagedSpriteLoadPlaylist_SpriteLoaded;
+                    coverSubscriptions.Add(playlist);
                     _ = playlist.SmallSprite;
                 }
                 else
@@ -138,12 +159,14 @@ namespace PlaylistManager.UI
         {
             if (sender is IStagedSpriteLoad stagedSpriteLoadPlaylist)
             {
+                stagedSpriteLoadPlaylist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
+                coverSubscriptions.Remove((IPlaylist)stagedSpriteLoadPlaylist);
+                if (disposed) return;
                 if (childPlaylists != null && childPlaylists.Contains((IPlaylist)stagedSpriteLoadPlaylist))
                 {
                     ShowPlaylist((IPlaylist)stagedSpriteLoadPlaylist);
                 }
                 playlistTableData.TableView.ReloadDataKeepingPosition();
-                stagedSpriteLoadPlaylist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
             }
         }
 
@@ -164,7 +187,7 @@ namespace PlaylistManager.UI
         }
 
         [UIAction("select-cell")]
-        private void OnCellSelect(TableView tableView, int index)
+        private async void OnCellSelect(TableView tableView, int index)
         {
             playlistTableData.TableView.ClearSelection();
             // Folder Selected
@@ -176,6 +199,7 @@ namespace PlaylistManager.UI
             {
                 index -= childManagers.Count;
                 var selectedPlaylist = childPlaylists[index];
+                var manager = parentManager;
                 IPlaylistSong playlistSong;
                 if (HighlightDifficulty)
                 {
@@ -188,19 +212,21 @@ namespace PlaylistManager.UI
                 try
                 {
                     selectedPlaylist.RaisePlaylistChanged();
-                    parentManager.StorePlaylist(selectedPlaylist);
-                    popupModalsController.ShowOkModal(modalTransform, string.Format("Song successfully added to {0}", selectedPlaylist.Title), null, animateParentCanvas: false);
+                    await PlaylistLibUtils.StorePlaylistAsync(selectedPlaylist, manager);
+                    if (!disposed && ReferenceEquals(parentManager, manager))
+                        popupModalsController.ShowOkModal(modalTransform, string.Format("Song successfully added to {0}", selectedPlaylist.Title), null, animateParentCanvas: false);
                     // TODO: Doesn't refresh the sprite.
                     Events.RaisePlaylistSongAdded(playlistSong, selectedPlaylist);
                 }
                 catch (Exception e)
                 {
-                    popupModalsController.ShowOkModal(modalTransform, "An error occured while adding song to playlist.", null, animateParentCanvas: false);
+                    if (!disposed && ReferenceEquals(parentManager, manager))
+                        popupModalsController.ShowOkModal(modalTransform, "An error occured while adding song to playlist.", null, animateParentCanvas: false);
                     Plugin.Log.Critical(string.Format("An exception was thrown while adding a song to a playlist.\nException Message: {0}", e.Message));
                 }
                 finally
                 {
-                    ShowPlaylistsForManager(parentManager);
+                    if (!disposed && ReferenceEquals(parentManager, manager)) ShowPlaylistsForManager(manager);
                 }
             }
         }
@@ -259,6 +285,7 @@ namespace PlaylistManager.UI
             {
                 deferredSpriteLoadPlaylist.SpriteLoaded -= StagedSpriteLoadPlaylist_SpriteLoaded;
                 deferredSpriteLoadPlaylist.SpriteLoaded += StagedSpriteLoadPlaylist_SpriteLoaded;
+                coverSubscriptions.Add(playlist);
                 _ = playlist.Sprite;
             }
 
